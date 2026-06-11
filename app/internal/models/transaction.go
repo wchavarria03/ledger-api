@@ -9,12 +9,9 @@ import (
 type TransactionType string
 
 const (
-	TypeExpense     TransactionType = "expense"
-	TypeIncome      TransactionType = "income"
-	TypeTransferOut TransactionType = "transfer_out"
-	TypeTransferIn  TransactionType = "transfer_in"
-	TypeFee         TransactionType = "fee"
-	TypeInterest    TransactionType = "interest"
+	TypeExpense  TransactionType = "expense"
+	TypeIncome   TransactionType = "income"
+	TypeTransfer TransactionType = "transfer"
 )
 
 type Transaction struct {

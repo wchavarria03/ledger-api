@@ -58,10 +58,10 @@ func (s *ReportService) Summarize(ctx context.Context, accountIDs []string, from
 		lastBalance = bal
 
 		switch tx.Type {
-		case models.TypeIncome, models.TypeInterest:
+		case models.TypeIncome:
 			summary.TotalIncome += amount
 			dailyIncome[day] += amount
-		case models.TypeExpense, models.TypeFee:
+		case models.TypeExpense:
 			absAmount := math.Abs(amount) // expenses are stored as negatives; normalise to positive
 			summary.TotalExpenses += absAmount
 			dailyExpenses[day] += absAmount
@@ -75,12 +75,14 @@ func (s *ReportService) Summarize(ctx context.Context, accountIDs []string, from
 				}
 				categoryTotals[root.ID].Total += absAmount
 			}
-		case models.TypeTransferIn:
-			summary.Transfers.IncomingCount++
-			summary.Transfers.IncomingTotal += amount
-		case models.TypeTransferOut:
-			summary.Transfers.OutgoingCount++
-			summary.Transfers.OutgoingTotal += amount
+		case models.TypeTransfer:
+			if amount >= 0 {
+				summary.Transfers.IncomingCount++
+				summary.Transfers.IncomingTotal += amount
+			} else {
+				summary.Transfers.OutgoingCount++
+				summary.Transfers.OutgoingTotal += math.Abs(amount)
+			}
 		}
 	}
 

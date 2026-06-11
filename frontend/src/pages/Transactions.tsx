@@ -15,20 +15,14 @@ const CURRENCY_SYMBOL: Record<string, string> = {
 const TYPE_STYLES: Record<string, string> = {
   expense: 'text-red-400',
   income: 'text-green-400',
-  transfer_out: 'text-orange-400',
-  transfer_in: 'text-blue-400',
-  fee: 'text-yellow-400',
-  interest: 'text-purple-400',
+  transfer: 'text-blue-400',
 }
 
 const TX_TYPES = [
   { value: '', label: 'All types' },
   { value: 'expense', label: 'Expense' },
   { value: 'income', label: 'Income' },
-  { value: 'transfer_in', label: 'Transfer in' },
-  { value: 'transfer_out', label: 'Transfer out' },
-  { value: 'fee', label: 'Fee' },
-  { value: 'interest', label: 'Interest' },
+  { value: 'transfer', label: 'Transfer' },
 ]
 
 function formatAmount(amount: string, currency: string): string {

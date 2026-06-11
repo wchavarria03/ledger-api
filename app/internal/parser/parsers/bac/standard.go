@@ -172,16 +172,13 @@ func deriveType(code, description string, amount decimal.Decimal) models.Transac
 	desc := strings.ToUpper(description)
 
 	if strings.Contains(desc, "COMISION") || strings.Contains(desc, "COBRO ADMINISTR") {
-		return models.TypeFee
+		return models.TypeExpense
 	}
 	if strings.Contains(desc, "INTERES") {
-		return models.TypeInterest
+		return models.TypeExpense
 	}
 	if code == "TF" {
-		if amount.IsNegative() {
-			return models.TypeTransferOut
-		}
-		return models.TypeTransferIn
+		return models.TypeTransfer
 	}
 	if amount.IsNegative() {
 		return models.TypeExpense
