@@ -100,6 +100,15 @@ func (p *standardParser) Parse(text string) (*models.Statement, error) {
 			continue
 		}
 
+		// Skip known page-header lines that repeat on every page. Without this,
+		// content like "Saldo en libros*" or "Fecha desde:" that appears in the
+		// page-2 header while inTable=true would pollute the field accumulator
+		// and could produce a spurious transaction if a valid date happens to
+		// land at position [0] of a 7-field group.
+		if isPageHeaderLine(trimmed) {
+			continue
+		}
+
 		fields = append(fields, trimmed)
 
 		if len(fields) == bacFieldCount {
@@ -207,4 +216,30 @@ func isNumeric(s string) bool {
 	cleaned := strings.ReplaceAll(s, ",", "")
 	_, err := decimal.NewFromString(cleaned)
 	return err == nil
+}
+
+// isPageHeaderLine returns true for lines that are part of the BAC page header
+// repeated on every page. These must not enter the field accumulator while
+// inTable=true or they can form spurious transactions.
+func isPageHeaderLine(s string) bool {
+	switch s {
+	case "Transacciones del mes",
+		"Cuenta:",
+		"Moneda:",
+		"Balance de la cuenta",
+		"Saldo en libros*",
+		"Retenidos y diferidos",
+		"Saldo disponible",
+		"Débito", "Debito",
+		"Créditos", "Creditos",
+		"Fecha",
+		"Referencia Codigó Descripción":
+		return true
+	}
+	return strings.HasPrefix(s, "Fecha de generación:") ||
+		strings.HasPrefix(s, "Fecha desde:") ||
+		strings.HasPrefix(s, "Fecha hasta:") ||
+		strings.HasPrefix(s, "* El Saldo en libros") ||
+		strings.HasPrefix(s, "pendientes de confirmación") ||
+		strings.HasPrefix(s, "Este documento es de referencia")
 }
