@@ -53,7 +53,7 @@ func (h *ReportHandler) GetSummary(c *gin.Context) {
 			return
 		}
 		for _, a := range accounts {
-			if a.Currency == currency {
+			if a.Currency == currency && !a.Locked {
 				accountIDs = append(accountIDs, a.ID)
 			}
 		}

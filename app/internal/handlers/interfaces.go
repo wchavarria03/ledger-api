@@ -15,7 +15,7 @@ type AccountLister interface {
 	List(ctx context.Context) ([]*models.Account, error)
 	GetByID(ctx context.Context, id string) (*models.Account, error)
 	Create(ctx context.Context, a *models.Account) (*models.Account, error)
-	Update(ctx context.Context, id string, fields map[string]string) (*models.Account, error)
+	Update(ctx context.Context, id string, fields map[string]any) (*models.Account, error)
 }
 
 type TransactionLister interface {

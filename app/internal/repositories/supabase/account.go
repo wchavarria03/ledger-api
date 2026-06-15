@@ -46,7 +46,7 @@ func (r *AccountRepository) FindByAccountNumber(ctx context.Context, number stri
 	return results[0], nil
 }
 
-func (r *AccountRepository) Update(ctx context.Context, id string, fields map[string]string) (*models.Account, error) {
+func (r *AccountRepository) Update(ctx context.Context, id string, fields map[string]any) (*models.Account, error) {
 	results, err := databases.Patch[[]*models.Account](ctx, r.client,
 		"/rest/v1/accounts?id=eq."+id,
 		fields,

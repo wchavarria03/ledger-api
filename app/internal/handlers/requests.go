@@ -5,11 +5,13 @@ type createAccountRequest struct {
 	BankName      string `json:"bank_name" binding:"required"`
 	Currency      string `json:"currency" binding:"required"`
 	AccountNumber string `json:"account_number"`
+	Locked        bool   `json:"locked"`
 }
 
 type updateAccountRequest struct {
 	Alias    string `json:"alias"`
 	Currency string `json:"currency"`
+	Locked   *bool  `json:"locked"`
 }
 
 type createCategoryRequest struct {

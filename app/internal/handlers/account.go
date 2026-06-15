@@ -35,6 +35,7 @@ func (h *AccountHandler) Create(c *gin.Context) {
 		Currency:      req.Currency,
 		AccountNumber: req.AccountNumber,
 		UserID:        userID,
+		Locked:        req.Locked,
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -49,12 +50,15 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	fields := map[string]string{}
+	fields := map[string]any{}
 	if req.Alias != "" {
 		fields["alias"] = req.Alias
 	}
 	if req.Currency != "" {
 		fields["currency"] = req.Currency
+	}
+	if req.Locked != nil {
+		fields["locked"] = *req.Locked
 	}
 	if len(fields) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "nothing to update"})

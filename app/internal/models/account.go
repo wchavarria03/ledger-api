@@ -9,4 +9,5 @@ type Account struct {
 	AccountNumber string `json:"account_number"`
 	ShortNumber   string `json:"short_number"`
 	UserID        string `json:"user_id"`
+	Locked        bool   `json:"locked"`
 }
