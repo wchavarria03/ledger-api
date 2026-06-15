@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -71,6 +73,13 @@ func (h *UploadHandler) Import(c *gin.Context) {
 		return
 	}
 
+	if raw := c.PostForm("overrides"); raw != "" {
+		var overrides []models.TransactionOverride
+		if err := json.Unmarshal([]byte(raw), &overrides); err == nil {
+			applyOverrides(stmt, overrides)
+		}
+	}
+
 	summary, err := h.importer.ImportWithSummary(c.Request.Context(), stmt, p.Name())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "import failed: " + err.Error()})
@@ -78,6 +87,27 @@ func (h *UploadHandler) Import(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, summary)
+}
+
+func applyOverrides(stmt *models.Statement, overrides []models.TransactionOverride) {
+	for _, o := range overrides {
+		if o.Index < 0 || o.Index >= len(stmt.Transactions) {
+			continue
+		}
+		tx := &stmt.Transactions[o.Index]
+		if o.Date != "" {
+			if t, err := time.Parse("2006-01-02", o.Date); err == nil {
+				tx.Date = t
+			}
+		}
+		if o.Description != "" {
+			tx.Description = o.Description
+		}
+		switch models.TransactionType(o.Type) {
+		case models.TypeExpense, models.TypeIncome, models.TypeTransfer:
+			tx.Type = models.TransactionType(o.Type)
+		}
+	}
 }
 
 func buildPreview(stmt *models.Statement, parserName string) *models.ImportPreview {
@@ -97,12 +127,8 @@ func buildPreview(stmt *models.Statement, parserName string) *models.ImportPrevi
 		periodEnd = stmt.Transactions[len(stmt.Transactions)-1].Date.Format("2006-01-02")
 	}
 
-	sample := stmt.Transactions
-	if len(sample) > 5 {
-		sample = sample[:5]
-	}
-	sampleModels := make([]models.Transaction, len(sample))
-	copy(sampleModels, sample)
+	txs := make([]models.Transaction, len(stmt.Transactions))
+	copy(txs, stmt.Transactions)
 
 	return &models.ImportPreview{
 		AccountNumber:    stmt.AccountNumber,
@@ -111,6 +137,6 @@ func buildPreview(stmt *models.Statement, parserName string) *models.ImportPrevi
 		TransactionCount: len(stmt.Transactions),
 		PeriodStart:      periodStart,
 		PeriodEnd:        periodEnd,
-		Sample:           sampleModels,
+		Transactions:     txs,
 	}
 }
