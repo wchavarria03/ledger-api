@@ -8,21 +8,21 @@ import (
 )
 
 // NewRouter creates a new Router with all routes configured.
-func NewRouter(hdlrs *handlers.Registry, jwtSecret, jwksURL string, allowedOrigins []string) *Router {
+func NewRouter(hdlrs *handlers.Registry, jwksURL string, allowedOrigins []string) *Router {
 	engine := gin.New()
 	engine.Use(gin.Recovery())
 	engine.Use(gin.Logger())
 	engine.Use(middleware.CORS(allowedOrigins))
 
-	setupRoutes(engine, hdlrs, jwtSecret, jwksURL)
+	setupRoutes(engine, hdlrs, jwksURL)
 
 	return &Router{engine: engine}
 }
 
 // setupRoutes configures all versioned routes for the application.
-func setupRoutes(engine *gin.Engine, hdlrs *handlers.Registry, jwtSecret, jwksURL string) {
+func setupRoutes(engine *gin.Engine, hdlrs *handlers.Registry, jwksURL string) {
 	v1 := engine.Group("/v1")
-	v1.Use(middleware.Auth(jwtSecret, jwksURL))
+	v1.Use(middleware.Auth(jwksURL))
 
 	v1.GET("/me", hdlrs.Me.GetMe)
 	setupAccountRoutes(v1, hdlrs)

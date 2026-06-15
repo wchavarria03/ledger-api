@@ -16,7 +16,6 @@ type Config struct {
 	SupabaseAnonKey string
 	ServerAddr     string
 	UserID         string
-	JWTSecret      string
 	AllowedOrigins []string
 }
 
@@ -54,7 +53,7 @@ func NewDependencies(cfg Config) (*Dependencies, error) {
 	}
 
 	jwksURL := cfg.SupabaseURL + "/auth/v1/.well-known/jwks.json"
-	deps.Server = httpserver.NewServer(cfg.ServerAddr, cfg.JWTSecret, jwksURL, cfg.AllowedOrigins, deps.Handlers)
+	deps.Server = httpserver.NewServer(cfg.ServerAddr, jwksURL, cfg.AllowedOrigins, deps.Handlers)
 
 	return &deps, nil
 }

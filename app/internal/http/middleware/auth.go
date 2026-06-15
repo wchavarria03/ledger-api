@@ -65,11 +65,8 @@ func fetchECPublicKey(jwksURL string) (*ecdsa.PublicKey, error) {
 	return nil, fmt.Errorf("no ES256 key found in JWKS")
 }
 
-// Auth validates Supabase JWTs. Supports both ES256 (new asymmetric keys,
-// verified via JWKS) and HS256 (legacy symmetric secret).
-func Auth(jwtSecret, jwksURL string) gin.HandlerFunc {
-	hmacKey := []byte(jwtSecret)
-
+// Auth validates Supabase JWTs using ES256 (asymmetric, verified via JWKS).
+func Auth(jwksURL string) gin.HandlerFunc {
 	var ecKey *ecdsa.PublicKey
 	if jwksURL != "" {
 		if key, err := fetchECPublicKey(jwksURL); err == nil {
@@ -94,8 +91,6 @@ func Auth(jwtSecret, jwksURL string) gin.HandlerFunc {
 					return nil, fmt.Errorf("no EC key available for ES256")
 				}
 				return ecKey, nil
-			case *jwt.SigningMethodHMAC:
-				return hmacKey, nil
 			default:
 				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 			}

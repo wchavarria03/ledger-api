@@ -20,7 +20,6 @@ type cliConfig struct {
 	SupabaseAnonKey string
 	ServerAddr     string
 	UserID         string
-	JWTSecret      string
 	AllowedOrigins string
 }
 
@@ -52,7 +51,6 @@ var rootCmd = &cobra.Command{
 			SupabaseAnonKey: cfg.SupabaseAnonKey,
 			ServerAddr:      cfg.ServerAddr,
 			UserID:          cfg.UserID,
-			JWTSecret:       cfg.JWTSecret,
 			AllowedOrigins:  origins,
 		})
 		if err != nil {
@@ -83,6 +81,5 @@ func init() {
 	}
 	rootCmd.PersistentFlags().StringVar(&cfg.ServerAddr, "addr", defaultAddr, "HTTP server listen address")
 	rootCmd.PersistentFlags().StringVar(&cfg.UserID, "user-id", os.Getenv("LEDGER_USER_ID"), "Supabase user ID to associate imported data with")
-	rootCmd.PersistentFlags().StringVar(&cfg.JWTSecret, "jwt-secret", os.Getenv("SUPABASE_JWT_SECRET"), "Supabase JWT secret for token validation")
 	rootCmd.PersistentFlags().StringVar(&cfg.AllowedOrigins, "cors-origins", os.Getenv("ALLOWED_ORIGINS"), "Comma-separated allowed CORS origins (default: *)")
 }
