@@ -33,3 +33,7 @@ type RuleExceptionHandler struct {
 	exceptions RuleExceptionManager
 	categories CategoryManager
 }
+
+type TransferHandler struct {
+	matcher TransferMatcher
+}

@@ -12,6 +12,7 @@ type Registry struct {
 	Report        *ReportHandler
 	RuleException *RuleExceptionHandler
 	Transaction   *TransactionHandler
+	Transfer      *TransferHandler
 	Upload        *UploadHandler
 }
 
@@ -25,6 +26,7 @@ func NewRegistry(svc *services.Registry) (*Registry, error) {
 		Report:        NewReportHandler(svc.Account, svc.Report),
 		RuleException: NewRuleExceptionHandler(svc.RuleExceptions, svc.Category),
 		Transaction:   NewTransactionHandler(svc.Transaction),
+		Transfer:      NewTransferHandler(svc.Transfer),
 		Upload:        NewUploadHandler(svc.Import),
 	}, nil
 }

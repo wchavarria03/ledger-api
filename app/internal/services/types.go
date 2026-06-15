@@ -14,7 +14,10 @@ type ClassificationService struct {
 	rules ClassificationRuleRepository
 }
 
-type TransferService struct{}
+type TransferService struct {
+	accounts     AccountRepository
+	transactions TransactionRepository
+}
 
 type CategoryService struct {
 	categories CategoryRepository
