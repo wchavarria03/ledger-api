@@ -10,5 +10,6 @@ type Account struct {
 	ShortNumber   string `json:"short_number"`
 	UserID        string   `json:"user_id"`
 	Locked        bool     `json:"locked"`
+	External      bool     `json:"external"`
 	Balance       *float64 `json:"balance,omitempty"`
 }

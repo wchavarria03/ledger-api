@@ -6,12 +6,14 @@ type createAccountRequest struct {
 	Currency      string `json:"currency" binding:"required"`
 	AccountNumber string `json:"account_number"`
 	Locked        bool   `json:"locked"`
+	External      bool   `json:"external"`
 }
 
 type updateAccountRequest struct {
 	Alias    string `json:"alias"`
 	Currency string `json:"currency"`
 	Locked   *bool  `json:"locked"`
+	External *bool  `json:"external"`
 }
 
 type createCategoryRequest struct {

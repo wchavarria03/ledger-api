@@ -19,6 +19,18 @@ func (h *AccountHandler) List(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	if externalParam := c.Query("external"); externalParam != "" {
+		wantExternal := externalParam == "true"
+		filtered := accounts[:0]
+		for _, a := range accounts {
+			if a.External == wantExternal {
+				filtered = append(filtered, a)
+			}
+		}
+		accounts = filtered
+	}
+
 	c.JSON(http.StatusOK, accounts)
 }
 
@@ -36,6 +48,7 @@ func (h *AccountHandler) Create(c *gin.Context) {
 		AccountNumber: req.AccountNumber,
 		UserID:        userID,
 		Locked:        req.Locked,
+		External:      req.External,
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
@@ -59,6 +72,9 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	}
 	if req.Locked != nil {
 		fields["locked"] = *req.Locked
+	}
+	if req.External != nil {
+		fields["external"] = *req.External
 	}
 	if len(fields) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "nothing to update"})
