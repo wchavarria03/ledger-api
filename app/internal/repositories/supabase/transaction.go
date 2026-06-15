@@ -217,6 +217,28 @@ func (r *TransactionRepository) GetByAccountIDsInRange(ctx context.Context, acco
 	return txs, nil
 }
 
+// GetCurrentBalances returns the most recent balance for each account.
+// Accounts with no transactions are omitted from the result.
+func (r *TransactionRepository) GetCurrentBalances(ctx context.Context, accountIDs []string) (map[string]float64, error) {
+	result := make(map[string]float64, len(accountIDs))
+	for _, id := range accountIDs {
+		rows, err := databases.Get[[]*transactionRowFull](ctx, r.client, "/rest/v1/transactions", url.Values{
+			"account_id": []string{"eq." + id},
+			"select":     []string{"account_id,balance"},
+			"order":      []string{"date.desc"},
+			"limit":      []string{"1"},
+		})
+		if err != nil {
+			return nil, err
+		}
+		if len(rows) > 0 {
+			bal, _ := rows[0].Balance.Float64()
+			result[id] = bal
+		}
+	}
+	return result, nil
+}
+
 // GetLastBalancePerAccount returns the last known balance for each account
 // strictly before the given date. Accounts with no prior transactions are omitted.
 func (r *TransactionRepository) GetLastBalancePerAccount(ctx context.Context, accountIDs []string, before time.Time) (map[string]float64, error) {

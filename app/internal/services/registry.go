@@ -16,7 +16,7 @@ type Registry struct {
 func NewRegistry(repos *repositories.Registry, userID string) *Registry {
 	classifier := NewClassificationService(repos.Classifications)
 	return &Registry{
-		Account:        NewAccountService(repos.Accounts),
+		Account:        NewAccountService(repos.Accounts, repos.Transactions),
 		Category:       NewCategoryService(repos.Categories, repos.CategoryRules, repos.TransactionCategories),
 		Classification: classifier,
 		Import:         NewImportService(repos.Accounts, repos.Transactions, classifier, repos.CategoryRules, repos.TransactionCategories, repos.RuleExceptions, userID),

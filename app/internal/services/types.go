@@ -23,7 +23,8 @@ type CategoryService struct {
 }
 
 type AccountService struct {
-	accounts AccountRepository
+	accounts     AccountRepository
+	transactions TransactionRepository
 }
 
 type ReportService struct {

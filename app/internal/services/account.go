@@ -7,8 +7,8 @@ import (
 	"ledger-api/app/internal/models"
 )
 
-func NewAccountService(accounts AccountRepository) *AccountService {
-	return &AccountService{accounts: accounts}
+func NewAccountService(accounts AccountRepository, transactions TransactionRepository) *AccountService {
+	return &AccountService{accounts: accounts, transactions: transactions}
 }
 
 func (s *AccountService) List(ctx context.Context) ([]*models.Account, error) {
@@ -16,6 +16,20 @@ func (s *AccountService) List(ctx context.Context) ([]*models.Account, error) {
 	if err != nil {
 		return nil, fmt.Errorf("list accounts: %w", err)
 	}
+
+	ids := make([]string, len(accounts))
+	for i, a := range accounts {
+		ids[i] = a.ID
+	}
+	balances, err := s.transactions.GetCurrentBalances(ctx, ids)
+	if err == nil {
+		for _, a := range accounts {
+			if bal, ok := balances[a.ID]; ok {
+				a.Balance = &bal
+			}
+		}
+	}
+
 	return accounts, nil
 }
 
