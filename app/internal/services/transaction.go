@@ -21,3 +21,7 @@ func (s *TransactionService) ListByAccount(ctx context.Context, accountID string
 func (s *TransactionService) ListFiltered(ctx context.Context, accountID string, filter models.TxFilter) ([]*models.Transaction, int, error) {
 	return s.repo.ListFiltered(ctx, accountID, filter)
 }
+
+func (s *TransactionService) Create(ctx context.Context, tx *models.Transaction) (*models.Transaction, error) {
+	return s.repo.Create(ctx, tx)
+}

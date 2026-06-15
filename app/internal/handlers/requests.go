@@ -16,6 +16,15 @@ type updateAccountRequest struct {
 	External *bool  `json:"external"`
 }
 
+type createTransactionRequest struct {
+	Date        string  `json:"date" binding:"required"`
+	Description string  `json:"description" binding:"required"`
+	Amount      float64 `json:"amount" binding:"required"`
+	Type        string  `json:"type" binding:"required"`
+	Currency    string  `json:"currency" binding:"required"`
+	Reference   string  `json:"reference"`
+}
+
 type createCategoryRequest struct {
 	Name     string `json:"name" binding:"required"`
 	ParentID string `json:"parent_id"`

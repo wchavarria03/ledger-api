@@ -39,6 +39,7 @@ func setupAccountRoutes(rg *gin.RouterGroup, hdlrs *handlers.Registry) {
 	accounts.GET("/:id", hdlrs.Account.Get)
 	accounts.PATCH("/:id", hdlrs.Account.Update)
 	accounts.GET("/:id/transactions", hdlrs.Transaction.ListByAccount)
+	accounts.POST("/:id/transactions", hdlrs.Transaction.Create)
 	accounts.GET("/:id/rule-exceptions", hdlrs.RuleException.ListByAccount)
 	accounts.POST("/:id/rule-exceptions", hdlrs.RuleException.Disable)
 	accounts.DELETE("/:id/rule-exceptions/:rule_id", hdlrs.RuleException.Enable)

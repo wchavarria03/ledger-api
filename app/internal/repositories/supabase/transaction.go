@@ -2,6 +2,7 @@ package supabase
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"strconv"
 	"strings"
@@ -49,6 +50,46 @@ type txCategoryEmbed struct {
 
 func NewTransactionRepository(client *databases.SupabaseClient) *TransactionRepository {
 	return &TransactionRepository{client: client}
+}
+
+func (r *TransactionRepository) Create(ctx context.Context, tx *models.Transaction) (*models.Transaction, error) {
+	balances, err := r.GetCurrentBalances(ctx, []string{tx.AccountID})
+	if err != nil {
+		return nil, err
+	}
+	lastBal := decimal.NewFromFloat(balances[tx.AccountID])
+
+	row := transactionRow{
+		AccountID:   tx.AccountID,
+		Date:        tx.Date.Format("2006-01-02"),
+		Reference:   tx.Reference,
+		Type:        string(tx.Type),
+		Description: tx.Description,
+		Amount:      tx.Amount,
+		Balance:     lastBal.Add(tx.Amount),
+		Currency:    tx.Currency,
+	}
+
+	results, err := databases.Post[[]*transactionRow](ctx, r.client, "/rest/v1/transactions", row, "return=representation")
+	if err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return nil, fmt.Errorf("create transaction: no result returned")
+	}
+	res := results[0]
+	date, _ := time.Parse("2006-01-02", res.Date)
+	return &models.Transaction{
+		ID:          res.ID,
+		AccountID:   res.AccountID,
+		Date:        date,
+		Reference:   res.Reference,
+		Type:        models.TransactionType(res.Type),
+		Description: res.Description,
+		Amount:      res.Amount,
+		Balance:     res.Balance,
+		Currency:    res.Currency,
+	}, nil
 }
 
 func (r *TransactionRepository) GetByAccountID(ctx context.Context, accountID string) ([]*models.Transaction, error) {
