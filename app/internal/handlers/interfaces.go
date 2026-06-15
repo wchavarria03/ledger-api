@@ -23,7 +23,7 @@ type TransactionLister interface {
 }
 
 type StatementImporter interface {
-	ImportWithSummary(ctx context.Context, stmt *models.Statement, bankName string) (*models.ImportSummary, error)
+	ImportWithSummary(ctx context.Context, stmt *models.Statement, bankName string, catOverrides map[int][]string) (*models.ImportSummary, error)
 	CheckOverlap(ctx context.Context, stmt *models.Statement) (int, error)
 }
 

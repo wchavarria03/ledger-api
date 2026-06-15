@@ -30,12 +30,12 @@ func NewImportService(
 }
 
 func (s *ImportService) Import(ctx context.Context, stmt *models.Statement, bankName string) error {
-	_, err := s.doImport(ctx, stmt, bankName)
+	_, err := s.doImport(ctx, stmt, bankName, nil)
 	return err
 }
 
-func (s *ImportService) ImportWithSummary(ctx context.Context, stmt *models.Statement, bankName string) (*models.ImportSummary, error) {
-	acc, err := s.doImport(ctx, stmt, bankName)
+func (s *ImportService) ImportWithSummary(ctx context.Context, stmt *models.Statement, bankName string, catOverrides map[int][]string) (*models.ImportSummary, error) {
+	acc, err := s.doImport(ctx, stmt, bankName, catOverrides)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +76,7 @@ func (s *ImportService) CheckOverlap(ctx context.Context, stmt *models.Statement
 	return len(existing), nil
 }
 
-func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, bankName string) (*models.Account, error) {
+func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, bankName string, catOverrides map[int][]string) (*models.Account, error) {
 	bank := bankName
 	if idx := strings.Index(bankName, "/"); idx != -1 {
 		bank = bankName[:idx]
@@ -124,6 +124,12 @@ func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, ba
 
 	if err := s.transactions.UpsertBatch(ctx, acc.ID, stmt.SourceFile, txs); err != nil {
 		return nil, fmt.Errorf("upsert transactions: %w", err)
+	}
+
+	// Apply user-supplied category overrides before auto-categorization so
+	// autoCategorize skips these transactions (it checks len(Categories) > 0).
+	if len(catOverrides) > 0 {
+		s.applyCategoryOverrides(ctx, acc.ID, stmt.Transactions, catOverrides)
 	}
 
 	// Auto-categorize newly imported transactions using category rules.
@@ -174,6 +180,38 @@ func (s *ImportService) autoCategorize(ctx context.Context, accountID string, st
 		}
 		// ignore error — categorization is best-effort
 		_ = s.txCategories.SetCategories(ctx, tx.ID, []string{catID})
+	}
+}
+
+// applyCategoryOverrides sets explicit categories for transactions the user
+// corrected during the import review. Matches stored transactions by
+// (date, reference, amount) — the same unique key used by UpsertBatch.
+func (s *ImportService) applyCategoryOverrides(ctx context.Context, accountID string, txs []models.Transaction, overrides map[int][]string) {
+	if s.txCategories == nil || len(txs) == 0 {
+		return
+	}
+	from := txs[0].Date
+	to := txs[len(txs)-1].Date
+	stored, err := s.transactions.GetByAccountIDsInRange(ctx, []string{accountID}, from, to)
+	if err != nil {
+		return
+	}
+
+	type key struct{ date, ref, amount string }
+	byKey := make(map[key]string, len(stored))
+	for _, tx := range stored {
+		byKey[key{tx.Date.Format("2006-01-02"), tx.Reference, tx.Amount.String()}] = tx.ID
+	}
+
+	for idx, catIDs := range overrides {
+		if idx < 0 || idx >= len(txs) {
+			continue
+		}
+		tx := txs[idx]
+		k := key{tx.Date.Format("2006-01-02"), tx.Reference, tx.Amount.String()}
+		if id, ok := byKey[k]; ok && id != "" {
+			_ = s.txCategories.SetCategories(ctx, id, catIDs)
+		}
 	}
 }
 

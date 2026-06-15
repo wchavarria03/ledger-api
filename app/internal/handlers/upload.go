@@ -73,14 +73,20 @@ func (h *UploadHandler) Import(c *gin.Context) {
 		return
 	}
 
+	catOverrides := map[int][]string{}
 	if raw := c.PostForm("overrides"); raw != "" {
 		var overrides []models.TransactionOverride
 		if err := json.Unmarshal([]byte(raw), &overrides); err == nil {
 			applyOverrides(stmt, overrides)
+			for _, o := range overrides {
+				if len(o.CategoryIDs) > 0 {
+					catOverrides[o.Index] = o.CategoryIDs
+				}
+			}
 		}
 	}
 
-	summary, err := h.importer.ImportWithSummary(c.Request.Context(), stmt, p.Name())
+	summary, err := h.importer.ImportWithSummary(c.Request.Context(), stmt, p.Name(), catOverrides)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "import failed: " + err.Error()})
 		return
