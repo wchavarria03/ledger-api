@@ -16,6 +16,7 @@ const (
 
 type Transaction struct {
 	ID          string          `json:"id,omitempty"`
+	AccountID   string          `json:"account_id,omitempty"`
 	Date        time.Time       `json:"date"`
 	Reference   string          `json:"reference,omitempty"`
 	Code        string          `json:"code,omitempty"`

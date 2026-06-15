@@ -71,6 +71,7 @@ func (r *TransactionRepository) GetByAccountID(ctx context.Context, accountID st
 		}
 		txs[i] = &models.Transaction{
 			ID:          row.ID,
+			AccountID:   row.AccountID,
 			Date:        date,
 			Reference:   row.Reference,
 			Code:        row.Code,
@@ -165,6 +166,7 @@ func (r *TransactionRepository) ListFiltered(ctx context.Context, accountID stri
 		}
 		txs[i] = &models.Transaction{
 			ID:          row.ID,
+			AccountID:   row.AccountID,
 			Date:        date,
 			Reference:   row.Reference,
 			Code:        row.Code,
@@ -200,6 +202,7 @@ func (r *TransactionRepository) GetByAccountIDsInRange(ctx context.Context, acco
 		}
 		txs[i] = &models.Transaction{
 			ID:          row.ID,
+			AccountID:   row.AccountID,
 			Date:        date,
 			Reference:   row.Reference,
 			Code:        row.Code,
@@ -214,25 +217,27 @@ func (r *TransactionRepository) GetByAccountIDsInRange(ctx context.Context, acco
 	return txs, nil
 }
 
-// GetLastBalanceBefore returns the running balance of the most recent transaction
-// across the given accounts that occurred strictly before the given date.
-// Returns 0 if no prior transactions exist.
-func (r *TransactionRepository) GetLastBalanceBefore(ctx context.Context, accountIDs []string, before time.Time) (float64, error) {
-	rows, err := databases.Get[[]*transactionRowFull](ctx, r.client, "/rest/v1/transactions", url.Values{
-		"account_id": []string{"in.(" + strings.Join(accountIDs, ",") + ")"},
-		"date":       []string{"lt." + before.Format("2006-01-02")},
-		"select":     []string{"balance"},
-		"order":      []string{"date.desc"},
-		"limit":      []string{"1"},
-	})
-	if err != nil {
-		return 0, err
+// GetLastBalancePerAccount returns the last known balance for each account
+// strictly before the given date. Accounts with no prior transactions are omitted.
+func (r *TransactionRepository) GetLastBalancePerAccount(ctx context.Context, accountIDs []string, before time.Time) (map[string]float64, error) {
+	result := make(map[string]float64, len(accountIDs))
+	for _, id := range accountIDs {
+		rows, err := databases.Get[[]*transactionRowFull](ctx, r.client, "/rest/v1/transactions", url.Values{
+			"account_id": []string{"eq." + id},
+			"date":       []string{"lt." + before.Format("2006-01-02")},
+			"select":     []string{"account_id,balance"},
+			"order":      []string{"date.desc"},
+			"limit":      []string{"1"},
+		})
+		if err != nil {
+			return nil, err
+		}
+		if len(rows) > 0 {
+			bal, _ := rows[0].Balance.Float64()
+			result[id] = bal
+		}
 	}
-	if len(rows) == 0 {
-		return 0, nil
-	}
-	bal, _ := rows[0].Balance.Float64()
-	return bal, nil
+	return result, nil
 }
 
 func (r *TransactionRepository) UpsertBatch(ctx context.Context, accountID string, sourceFile string, txs []models.Transaction) error {

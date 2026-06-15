@@ -14,8 +14,8 @@ func NewReportService(repo TransactionRepository, cats CategoryRepository) *Repo
 }
 
 func (s *ReportService) Summarize(ctx context.Context, accountIDs []string, from, to time.Time) (*models.ReportSummary, error) {
-	// Fetch carry-over balance from the last transaction before this period.
-	carryBalance, err := s.repo.GetLastBalanceBefore(ctx, accountIDs, from)
+	// Last known balance per account strictly before the period — the starting point.
+	carryPerAccount, err := s.repo.GetLastBalancePerAccount(ctx, accountIDs, from)
 	if err != nil {
 		return nil, err
 	}
@@ -44,18 +44,31 @@ func (s *ReportService) Summarize(ctx context.Context, accountIDs []string, from
 
 	dailyIncome := map[string]float64{}
 	dailyExpenses := map[string]float64{}
+	// dailyBalance tracks the summed balance across all accounts for each day
+	// that had at least one transaction.
 	dailyBalance := map[string]float64{}
 	categoryTotals := map[string]*models.CategorySpend{}
 
-	lastBalance := carryBalance
+	// Seed per-account last balance from carry values so accounts with no
+	// in-period transactions still contribute to the running total.
+	lastBalPerAccount := make(map[string]float64, len(accountIDs))
+	for _, id := range accountIDs {
+		lastBalPerAccount[id] = carryPerAccount[id]
+	}
 
 	for _, tx := range txs { // sorted date asc by the repo query
 		day := tx.Date.Format("2006-01-02")
 		amount, _ := tx.Amount.Float64()
 		bal, _ := tx.Balance.Float64()
 
-		dailyBalance[day] = bal
-		lastBalance = bal
+		lastBalPerAccount[tx.AccountID] = bal
+
+		// Sum all accounts' latest balance to get the portfolio total for this day.
+		dayTotal := 0.0
+		for _, b := range lastBalPerAccount {
+			dayTotal += b
+		}
+		dailyBalance[day] = dayTotal
 
 		switch tx.Type {
 		case models.TypeIncome:
@@ -86,10 +99,18 @@ func (s *ReportService) Summarize(ctx context.Context, accountIDs []string, from
 		}
 	}
 
-	summary.TotalBalance = lastBalance
+	totalBalance := 0.0
+	for _, bal := range lastBalPerAccount {
+		totalBalance += bal
+	}
+	summary.TotalBalance = totalBalance
 	summary.PeriodChange = summary.TotalIncome - summary.TotalExpenses
 
-	prevBalance := carryBalance
+	carryTotal := 0.0
+	for _, bal := range carryPerAccount {
+		carryTotal += bal
+	}
+	prevTotal := carryTotal
 	for d := from; !d.After(to); d = d.AddDate(0, 0, 1) {
 		day := d.Format("2006-01-02")
 		summary.DailyChanges = append(summary.DailyChanges, models.DailyChange{
@@ -97,12 +118,12 @@ func (s *ReportService) Summarize(ctx context.Context, accountIDs []string, from
 			Income:   dailyIncome[day],
 			Expenses: dailyExpenses[day],
 		})
-		if bal, ok := dailyBalance[day]; ok {
-			prevBalance = bal
+		if total, ok := dailyBalance[day]; ok {
+			prevTotal = total
 		}
 		summary.BalanceHistory = append(summary.BalanceHistory, models.DailyBalance{
 			Date:    day,
-			Balance: prevBalance,
+			Balance: prevTotal,
 		})
 	}
 

@@ -20,7 +20,7 @@ type TransactionRepository interface {
 	GetByAccountID(ctx context.Context, accountID string) ([]*models.Transaction, error)
 	ListFiltered(ctx context.Context, accountID string, filter models.TxFilter) ([]*models.Transaction, int, error)
 	GetByAccountIDsInRange(ctx context.Context, accountIDs []string, from, to time.Time) ([]*models.Transaction, error)
-	GetLastBalanceBefore(ctx context.Context, accountIDs []string, before time.Time) (float64, error)
+	GetLastBalancePerAccount(ctx context.Context, accountIDs []string, before time.Time) (map[string]float64, error)
 }
 
 type ClassificationRuleRepository interface {
