@@ -23,6 +23,6 @@ func NewRegistry(repos *repositories.Registry, userID string) *Registry {
 		Report:         NewReportService(repos.Transactions, repos.Categories),
 		RuleExceptions: repos.RuleExceptions,
 		Transaction:    NewTransactionService(repos.Transactions),
-		Transfer:       NewTransferService(repos.Accounts, repos.Transactions),
+		Transfer:       NewTransferService(repos.Accounts, repos.Transactions, repos.Transfers),
 	}
 }

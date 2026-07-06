@@ -303,6 +303,22 @@ func (r *TransactionRepository) GetLastBalancePerAccount(ctx context.Context, ac
 	return result, nil
 }
 
+// Delete removes a transaction by ID. Used to compensate for a partially
+// failed transfer (the counterpart leg couldn't be written).
+func (r *TransactionRepository) Delete(ctx context.Context, id string) error {
+	return databases.Delete(ctx, r.client, "/rest/v1/transactions?id=eq."+id)
+}
+
+// SetTransferID stamps a transaction with the transfer row that links it
+// to its counterpart leg.
+func (r *TransactionRepository) SetTransferID(ctx context.Context, txID, transferID string) error {
+	_, err := databases.Patch[struct{}](ctx, r.client,
+		"/rest/v1/transactions?id=eq."+txID,
+		map[string]any{"transfer_id": transferID},
+		"return=minimal")
+	return err
+}
+
 func (r *TransactionRepository) UpsertBatch(ctx context.Context, accountID string, sourceFile string, txs []models.Transaction) error {
 	rows := make([]transactionRow, len(txs))
 	for i, tx := range txs {

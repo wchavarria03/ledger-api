@@ -23,6 +23,14 @@ type TransactionRepository interface {
 	GetByAccountIDsInRange(ctx context.Context, accountIDs []string, from, to time.Time) ([]*models.Transaction, error)
 	GetCurrentBalances(ctx context.Context, accountIDs []string) (map[string]float64, error)
 	GetLastBalancePerAccount(ctx context.Context, accountIDs []string, before time.Time) (map[string]float64, error)
+	Delete(ctx context.Context, id string) error
+	SetTransferID(ctx context.Context, txID, transferID string) error
+}
+
+// TransferRepository persists the link row connecting two transactions
+// that represent the same money moving between accounts.
+type TransferRepository interface {
+	Create(ctx context.Context, fromTxID, toTxID string, exchangeRate *float64, exchangeSource string) (*models.Transfer, error)
 }
 
 type ClassificationRuleRepository interface {

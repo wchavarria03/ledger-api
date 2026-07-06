@@ -46,3 +46,12 @@ type createCategoryRuleRequest struct {
 type setTransactionCategoriesRequest struct {
 	CategoryIDs []string `json:"category_ids" binding:"required"`
 }
+
+type createTransferRequest struct {
+	FromAccountID string  `json:"from_account_id" binding:"required"`
+	ToAccountID   string  `json:"to_account_id" binding:"required"`
+	Amount        float64 `json:"amount" binding:"required,gt=0"`
+	Currency      string  `json:"currency" binding:"required"`
+	Date          string  `json:"date" binding:"required"`
+	Description   string  `json:"description"`
+}

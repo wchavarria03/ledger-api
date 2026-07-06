@@ -6,11 +6,113 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"ledger-api/app/internal/models"
 )
 
-func NewTransferService(accounts AccountRepository, transactions TransactionRepository) *TransferService {
-	return &TransferService{accounts: accounts, transactions: transactions}
+func NewTransferService(accounts AccountRepository, transactions TransactionRepository, transfers TransferRepository) *TransferService {
+	return &TransferService{accounts: accounts, transactions: transactions, transfers: transfers}
+}
+
+// CreateTransfer records money moving from one account to another as a
+// linked pair of transactions (a debit on the source, a credit on the
+// destination), plus a row in the transfers table connecting them so the
+// existing reconciliation logic recognizes them as a real transfer.
+//
+// Cross-currency transfers are rejected for now — both accounts must use
+// the same currency as the request. BCCR exchange-rate support is tracked
+// separately in docs/FUTURE_ENHANCEMENTS.md.
+func (s *TransferService) CreateTransfer(ctx context.Context, input models.TransferInput) (*models.TransferResult, error) {
+	if input.FromAccountID == "" || input.ToAccountID == "" {
+		return nil, fmt.Errorf("from_account_id and to_account_id are required")
+	}
+	if input.FromAccountID == input.ToAccountID {
+		return nil, fmt.Errorf("from_account_id and to_account_id must be different")
+	}
+	if input.Amount.LessThanOrEqual(decimal.Zero) {
+		return nil, fmt.Errorf("amount must be positive")
+	}
+
+	fromAccount, err := s.accounts.FindByID(ctx, input.FromAccountID)
+	if err != nil {
+		return nil, fmt.Errorf("lookup from account: %w", err)
+	}
+	if fromAccount == nil {
+		return nil, fmt.Errorf("from account not found")
+	}
+
+	toAccount, err := s.accounts.FindByID(ctx, input.ToAccountID)
+	if err != nil {
+		return nil, fmt.Errorf("lookup to account: %w", err)
+	}
+	if toAccount == nil {
+		return nil, fmt.Errorf("to account not found")
+	}
+
+	if fromAccount.Currency != input.Currency || toAccount.Currency != input.Currency {
+		return nil, fmt.Errorf(
+			"cross-currency transfers are not supported yet: both accounts must use %s (from=%s, to=%s)",
+			input.Currency, fromAccount.Currency, toAccount.Currency,
+		)
+	}
+
+	description := input.Description
+	if description == "" {
+		description = fmt.Sprintf("Transfer: %s -> %s", fromAccount.Name, toAccount.Name)
+	}
+
+	fromTx, err := s.transactions.Create(ctx, &models.Transaction{
+		AccountID:   input.FromAccountID,
+		Date:        input.Date,
+		Description: description,
+		Amount:      input.Amount.Neg(),
+		Type:        models.TypeTransfer,
+		Currency:    input.Currency,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create outgoing transaction: %w", err)
+	}
+
+	toTx, err := s.transactions.Create(ctx, &models.Transaction{
+		AccountID:   input.ToAccountID,
+		Date:        input.Date,
+		Description: description,
+		Amount:      input.Amount,
+		Type:        models.TypeTransfer,
+		Currency:    input.Currency,
+	})
+	if err != nil {
+		// Compensate: remove the leg we already wrote so the source
+		// account doesn't end up silently short with no matching credit.
+		if delErr := s.transactions.Delete(ctx, fromTx.ID); delErr != nil {
+			return nil, fmt.Errorf(
+				"create incoming transaction: %w (also failed to roll back outgoing leg %s: %v)",
+				err, fromTx.ID, delErr,
+			)
+		}
+		return nil, fmt.Errorf("create incoming transaction: %w", err)
+	}
+
+	transfer, err := s.transfers.Create(ctx, fromTx.ID, toTx.ID, nil, "calculated")
+	if err != nil {
+		return nil, fmt.Errorf("link transfer: %w", err)
+	}
+
+	if err := s.transactions.SetTransferID(ctx, fromTx.ID, transfer.ID); err != nil {
+		return nil, fmt.Errorf("link outgoing transaction to transfer: %w", err)
+	}
+	if err := s.transactions.SetTransferID(ctx, toTx.ID, transfer.ID); err != nil {
+		return nil, fmt.Errorf("link incoming transaction to transfer: %w", err)
+	}
+	fromTx.TransferID = transfer.ID
+	toTx.TransferID = transfer.ID
+
+	return &models.TransferResult{
+		Transfer:        *transfer,
+		FromTransaction: *fromTx,
+		ToTransaction:   *toTx,
+	}, nil
 }
 
 // MatchForPeriod fetches all accounts and their transactions in the given date

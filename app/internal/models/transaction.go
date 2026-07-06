@@ -25,6 +25,7 @@ type Transaction struct {
 	Amount      decimal.Decimal `json:"amount"`
 	Balance     decimal.Decimal `json:"balance"`
 	Currency    string          `json:"currency"`
+	TransferID  string          `json:"transfer_id,omitempty"`
 	Categories  []*Category     `json:"categories,omitempty"`
 }
 

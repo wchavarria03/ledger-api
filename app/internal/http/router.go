@@ -29,6 +29,7 @@ func setupRoutes(engine *gin.Engine, hdlrs *handlers.Registry, jwksURL string) {
 	setupCategoryRoutes(v1, hdlrs)
 	setupReportRoutes(v1, hdlrs)
 	v1.POST("/import", hdlrs.Upload.Import)
+	v1.POST("/transfers", hdlrs.Transfer.Create)
 	v1.GET("/transfers/matches", hdlrs.Transfer.GetMatches)
 }
 

@@ -17,6 +17,7 @@ type ClassificationService struct {
 type TransferService struct {
 	accounts     AccountRepository
 	transactions TransactionRepository
+	transfers    TransferRepository
 }
 
 type CategoryService struct {

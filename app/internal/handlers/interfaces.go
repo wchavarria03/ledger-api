@@ -32,8 +32,9 @@ type ReportSummarizer interface {
 	Summarize(ctx context.Context, accountIDs []string, from, to time.Time) (*models.ReportSummary, error)
 }
 
-type TransferMatcher interface {
+type TransferService interface {
 	MatchForPeriod(ctx context.Context, from, to time.Time) ([]models.TransferMatch, error)
+	CreateTransfer(ctx context.Context, input models.TransferInput) (*models.TransferResult, error)
 }
 
 type RuleExceptionManager interface {

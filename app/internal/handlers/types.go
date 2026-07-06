@@ -35,5 +35,5 @@ type RuleExceptionHandler struct {
 }
 
 type TransferHandler struct {
-	matcher TransferMatcher
+	svc TransferService
 }
