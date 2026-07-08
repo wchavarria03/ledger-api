@@ -183,7 +183,12 @@ func deriveType(code, description string, amount decimal.Decimal) models.Transac
 	if strings.Contains(desc, "COMISION") || strings.Contains(desc, "COBRO ADMINISTR") {
 		return models.TypeExpense
 	}
-	if strings.Contains(desc, "INTERES") {
+	// Interest can go either way: a debit (interest charged on a loan/overdraft)
+	// is an expense, but a credit (interest the bank pays you, e.g. on a
+	// savings/investment account) is income. Only force expense when the
+	// amount is actually negative — otherwise fall through to the default
+	// sign-based classification below.
+	if strings.Contains(desc, "INTERES") && amount.IsNegative() {
 		return models.TypeExpense
 	}
 	if code == "TF" {
