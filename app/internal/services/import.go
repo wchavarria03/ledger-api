@@ -16,6 +16,7 @@ func NewImportService(
 	categoryRules CategoryRuleRepository,
 	txCategories TransactionCategoryRepository,
 	ruleExceptions AccountRuleExceptionRepository,
+	transferSvc *TransferService,
 	userID string,
 ) *ImportService {
 	return &ImportService{
@@ -25,17 +26,18 @@ func NewImportService(
 		categoryRules:  categoryRules,
 		txCategories:   txCategories,
 		ruleExceptions: ruleExceptions,
+		transferSvc:    transferSvc,
 		userID:         userID,
 	}
 }
 
 func (s *ImportService) Import(ctx context.Context, stmt *models.Statement, bankName string) error {
-	_, err := s.doImport(ctx, stmt, bankName, nil)
+	_, _, err := s.doImport(ctx, stmt, bankName, nil)
 	return err
 }
 
 func (s *ImportService) ImportWithSummary(ctx context.Context, stmt *models.Statement, bankName string, catOverrides map[int][]string) (*models.ImportSummary, error) {
-	acc, err := s.doImport(ctx, stmt, bankName, catOverrides)
+	acc, linked, err := s.doImport(ctx, stmt, bankName, catOverrides)
 	if err != nil {
 		return nil, err
 	}
@@ -44,11 +46,12 @@ func (s *ImportService) ImportWithSummary(ctx context.Context, stmt *models.Stat
 		bank = bankName[:idx]
 	}
 	return &models.ImportSummary{
-		AccountName:   acc.Name,
-		AccountNumber: stmt.AccountNumber,
-		Currency:      acc.Currency,
-		Bank:          bank,
-		ImportedCount: len(stmt.Transactions),
+		AccountName:          acc.Name,
+		AccountNumber:        stmt.AccountNumber,
+		Currency:             acc.Currency,
+		Bank:                 bank,
+		ImportedCount:        len(stmt.Transactions),
+		LinkedTransfersCount: linked,
 	}, nil
 }
 
@@ -76,7 +79,7 @@ func (s *ImportService) CheckOverlap(ctx context.Context, stmt *models.Statement
 	return len(existing), nil
 }
 
-func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, bankName string, catOverrides map[int][]string) (*models.Account, error) {
+func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, bankName string, catOverrides map[int][]string) (*models.Account, int, error) {
 	bank := bankName
 	if idx := strings.Index(bankName, "/"); idx != -1 {
 		bank = bankName[:idx]
@@ -90,7 +93,7 @@ func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, ba
 
 	acc, err := s.accounts.FindByAccountNumber(ctx, stmt.AccountNumber)
 	if err != nil {
-		return nil, fmt.Errorf("lookup account: %w", err)
+		return nil, 0, fmt.Errorf("lookup account: %w", err)
 	}
 
 	if acc == nil {
@@ -113,17 +116,17 @@ func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, ba
 			UserID:        userID,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("upsert account: %w", err)
+			return nil, 0, fmt.Errorf("upsert account: %w", err)
 		}
 	}
 
 	txs, err := s.classifier.Apply(ctx, bank, stmt.Transactions)
 	if err != nil {
-		return nil, fmt.Errorf("classify transactions: %w", err)
+		return nil, 0, fmt.Errorf("classify transactions: %w", err)
 	}
 
 	if err := s.transactions.UpsertBatch(ctx, acc.ID, stmt.SourceFile, txs); err != nil {
-		return nil, fmt.Errorf("upsert transactions: %w", err)
+		return nil, 0, fmt.Errorf("upsert transactions: %w", err)
 	}
 
 	// Apply user-supplied category overrides before auto-categorization so
@@ -136,7 +139,26 @@ func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, ba
 	// Errors here are non-fatal — the import already succeeded.
 	s.autoCategorize(ctx, acc.ID, stmt)
 
-	return acc, nil
+	// Auto-reconcile transfer pairs across all accounts for this period.
+	// Errors here are non-fatal — same best-effort pattern as autoCategorize.
+	linked := s.autoReconcile(ctx, stmt)
+
+	return acc, linked, nil
+}
+
+// autoReconcile runs transfer reconciliation across all accounts for the
+// statement's date range and returns the number of pairs linked.
+func (s *ImportService) autoReconcile(ctx context.Context, stmt *models.Statement) int {
+	if s.transferSvc == nil || len(stmt.Transactions) == 0 {
+		return 0
+	}
+	from := stmt.Transactions[0].Date
+	to := stmt.Transactions[len(stmt.Transactions)-1].Date
+	linked, err := s.transferSvc.ReconcileForPeriod(ctx, from, to)
+	if err != nil {
+		return 0
+	}
+	return linked
 }
 
 // autoCategorize applies category rules to uncategorized transactions in the statement period.

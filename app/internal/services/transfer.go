@@ -155,7 +155,7 @@ func (s *TransferService) MatchForPeriod(ctx context.Context, from, to time.Time
 
 	pairs := s.Match(stmts)
 
-	// Flatten all transactions for index lookup.
+	// Flatten all transactions for index lookup (same iteration order as Match).
 	var flat []models.Transaction
 	for _, stmt := range stmts {
 		flat = append(flat, stmt.Transactions...)
@@ -163,10 +163,11 @@ func (s *TransferService) MatchForPeriod(ctx context.Context, from, to time.Time
 
 	matches := make([]models.TransferMatch, 0, len(pairs))
 	for _, p := range pairs {
-		if p[0] < len(flat) && p[1] < len(flat) {
+		if p.a < len(flat) && p.b < len(flat) {
 			matches = append(matches, models.TransferMatch{
-				From: flat[p[0]],
-				To:   flat[p[1]],
+				From:       flat[p.a],
+				To:         flat[p.b],
+				Confidence: p.confidence,
 			})
 		}
 	}
@@ -174,13 +175,115 @@ func (s *TransferService) MatchForPeriod(ctx context.Context, from, to time.Time
 	return matches, nil
 }
 
+// ReconcileForPeriod finds unlinked transfer-typed transactions across all
+// accounts in [from, to], matches them, and persists links for high-confidence
+// pairs (tier 1: same reference, tier 2: short-number cross-reference).
+// Tier-3-only pairs (same date + amount, no corroborating evidence) are
+// skipped and left for manual review.
+// Returns the number of transfer pairs successfully linked.
+func (s *TransferService) ReconcileForPeriod(ctx context.Context, from, to time.Time) (int, error) {
+	accounts, err := s.accounts.FindAll(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("list accounts: %w", err)
+	}
+
+	ids := make([]string, len(accounts))
+	for i, a := range accounts {
+		ids[i] = a.ID
+	}
+
+	allTxs, err := s.transactions.GetByAccountIDsInRange(ctx, ids, from, to)
+	if err != nil {
+		return 0, fmt.Errorf("fetch transactions: %w", err)
+	}
+
+	// Index accounts by ID for short-number lookup.
+	shortByAcct := make(map[string]string, len(accounts))
+	acctNumByID := make(map[string]string, len(accounts))
+	for _, acc := range accounts {
+		shortByAcct[acc.ID] = acc.ShortNumber
+		acctNumByID[acc.ID] = acc.AccountNumber
+	}
+
+	// Group only unlinked, transfer-typed transactions by account.
+	txsByAccount := make(map[string][]*models.Transaction, len(accounts))
+	for _, tx := range allTxs {
+		if tx.Type != models.TypeTransfer || tx.TransferID != "" {
+			continue
+		}
+		txsByAccount[tx.AccountID] = append(txsByAccount[tx.AccountID], tx)
+	}
+
+	// Build synthetic statements from accounts that have qualifying transactions.
+	stmts := make([]*models.Statement, 0, len(accounts))
+	for _, acc := range accounts {
+		txs := txsByAccount[acc.ID]
+		if len(txs) == 0 {
+			continue
+		}
+		flat := make([]models.Transaction, len(txs))
+		for i, t := range txs {
+			flat[i] = *t
+		}
+		stmts = append(stmts, &models.Statement{
+			AccountNumber: acc.AccountNumber,
+			ShortNumber:   acc.ShortNumber,
+			Transactions:  flat,
+		})
+	}
+
+	if len(stmts) == 0 {
+		return 0, nil
+	}
+
+	pairs := s.Match(stmts)
+
+	// Flatten in the same iteration order Match() used, so indices align.
+	var flat []models.Transaction
+	for _, stmt := range stmts {
+		flat = append(flat, stmt.Transactions...)
+	}
+
+	linked := 0
+	for _, pair := range pairs {
+		// Skip tier-3 (amount + date only) — requires user confirmation.
+		if pair.confidence == models.MatchByAmountDate {
+			continue
+		}
+		if pair.a >= len(flat) || pair.b >= len(flat) {
+			continue
+		}
+		fromTx := flat[pair.a]
+		toTx := flat[pair.b]
+
+		transfer, err := s.transfers.Create(ctx, fromTx.ID, toTx.ID, nil, "auto")
+		if err != nil {
+			// Non-fatal: one bad pair must not abort the whole reconciliation.
+			continue
+		}
+		_ = s.transactions.SetTransferID(ctx, fromTx.ID, transfer.ID)
+		_ = s.transactions.SetTransferID(ctx, toTx.ID, transfer.ID)
+		linked++
+	}
+
+	return linked, nil
+}
+
+// matchPair holds the indices of a matched pair within the flattened
+// transaction list, plus the confidence tier that identified it.
+type matchPair struct {
+	a, b       int
+	confidence models.MatchConfidence
+}
+
 // Match identifies transfer pairs across statements using a 3-tier priority:
 //  1. Same Reference across accounts (strongest)
 //  2. Description contains counterpart's ShortNumber (TEF A/DE patterns)
-//  3. Same date + same absolute amount (weakest, needs user confirmation)
+//  3. Same date + same absolute amount + same currency (weakest, needs user confirmation)
 //
-// Returns pairs of (outIndex, inIndex) into the flattened transaction list.
-func (s *TransferService) Match(statements []*models.Statement) [][2]int {
+// Returns pairs of (a, b) indices into the flattened transaction list, with
+// the confidence tier that produced the match.
+func (s *TransferService) Match(statements []*models.Statement) []matchPair {
 	type indexed struct {
 		stmtIdx int
 		txIdx   int
@@ -200,7 +303,7 @@ func (s *TransferService) Match(statements []*models.Statement) [][2]int {
 	}
 
 	matched := make(map[int]bool)
-	var pairs [][2]int
+	var pairs []matchPair
 
 	for i, a := range all {
 		if matched[i] {
@@ -210,10 +313,10 @@ func (s *TransferService) Match(statements []*models.Statement) [][2]int {
 			if j <= i || matched[j] || a.stmtIdx == b.stmtIdx {
 				continue
 			}
-			if isTransferPair(a.tx, b.tx, shortNumbers[a.stmtIdx], shortNumbers[b.stmtIdx]) {
+			if confidence, ok := isTransferPair(a.tx, b.tx, shortNumbers[a.stmtIdx], shortNumbers[b.stmtIdx]); ok {
 				matched[i] = true
 				matched[j] = true
-				pairs = append(pairs, [2]int{i, j})
+				pairs = append(pairs, matchPair{a: i, b: j, confidence: confidence})
 				break
 			}
 		}
@@ -222,24 +325,24 @@ func (s *TransferService) Match(statements []*models.Statement) [][2]int {
 	return pairs
 }
 
-func isTransferPair(a, b models.Transaction, shortA, shortB string) bool {
+func isTransferPair(a, b models.Transaction, shortA, shortB string) (models.MatchConfidence, bool) {
 	// Tier 1: same non-empty reference
 	if a.Reference != "" && a.Reference == b.Reference {
-		return true
+		return models.MatchByReference, true
 	}
 
 	// Tier 2: TEF description contains counterpart's short number
 	if shortB != "" && strings.Contains(a.Description, shortB) {
-		return true
+		return models.MatchByShortNumber, true
 	}
 	if shortA != "" && strings.Contains(b.Description, shortA) {
-		return true
+		return models.MatchByShortNumber, true
 	}
 
-	// Tier 3: same date + same absolute amount (opposite signs)
-	if a.Date.Equal(b.Date) && a.Amount.Add(b.Amount).IsZero() {
-		return true
+	// Tier 3: same date + same currency + same absolute amount (opposite signs)
+	if a.Date.Equal(b.Date) && a.Currency == b.Currency && a.Amount.Add(b.Amount).IsZero() {
+		return models.MatchByAmountDate, true
 	}
 
-	return false
+	return "", false
 }

@@ -31,17 +31,18 @@ type transactionRow struct {
 
 // transactionRowFull is the read shape — includes embedded category join.
 type transactionRowFull struct {
-	ID                    string             `json:"id,omitempty"`
-	AccountID             string             `json:"account_id"`
-	Date                  string             `json:"date"`
-	Reference             string             `json:"reference,omitempty"`
-	Code                  string             `json:"code,omitempty"`
-	Type                  string             `json:"type"`
-	Description           string             `json:"description"`
-	Amount                decimal.Decimal    `json:"amount"`
-	Balance               decimal.Decimal    `json:"balance"`
-	Currency              string             `json:"currency"`
-	TransactionCategories []txCategoryEmbed  `json:"transaction_categories"`
+	ID                    string            `json:"id,omitempty"`
+	AccountID             string            `json:"account_id"`
+	Date                  string            `json:"date"`
+	Reference             string            `json:"reference,omitempty"`
+	Code                  string            `json:"code,omitempty"`
+	Type                  string            `json:"type"`
+	Description           string            `json:"description"`
+	Amount                decimal.Decimal   `json:"amount"`
+	Balance               decimal.Decimal   `json:"balance"`
+	Currency              string            `json:"currency"`
+	TransferID            string            `json:"transfer_id,omitempty"`
+	TransactionCategories []txCategoryEmbed `json:"transaction_categories"`
 }
 
 type txCategoryEmbed struct {
@@ -121,6 +122,7 @@ func (r *TransactionRepository) GetByAccountID(ctx context.Context, accountID st
 			Amount:      row.Amount,
 			Balance:     row.Balance,
 			Currency:    row.Currency,
+			TransferID:  row.TransferID,
 			Categories:  cats,
 		}
 	}
@@ -216,6 +218,7 @@ func (r *TransactionRepository) ListFiltered(ctx context.Context, accountID stri
 			Amount:      row.Amount,
 			Balance:     row.Balance,
 			Currency:    row.Currency,
+			TransferID:  row.TransferID,
 			Categories:  cats,
 		}
 	}
@@ -252,6 +255,7 @@ func (r *TransactionRepository) GetByAccountIDsInRange(ctx context.Context, acco
 			Amount:      row.Amount,
 			Balance:     row.Balance,
 			Currency:    row.Currency,
+			TransferID:  row.TransferID,
 			Categories:  cats,
 		}
 	}

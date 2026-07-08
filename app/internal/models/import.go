@@ -12,11 +12,12 @@ type ImportPreview struct {
 }
 
 type ImportSummary struct {
-	AccountName   string `json:"account_name"`
-	AccountNumber string `json:"account_number"`
-	Currency      string `json:"currency"`
-	Bank          string `json:"bank"`
-	ImportedCount int    `json:"imported_count"`
+	AccountName          string `json:"account_name"`
+	AccountNumber        string `json:"account_number"`
+	Currency             string `json:"currency"`
+	Bank                 string `json:"bank"`
+	ImportedCount        int    `json:"imported_count"`
+	LinkedTransfersCount int    `json:"linked_transfers_count"`
 }
 
 // TransactionOverride carries per-transaction corrections supplied by the user

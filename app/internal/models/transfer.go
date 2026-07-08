@@ -6,9 +6,18 @@ import (
 	"github.com/shopspring/decimal"
 )
 
+type MatchConfidence string
+
+const (
+	MatchByReference   MatchConfidence = "reference"
+	MatchByShortNumber MatchConfidence = "short_number"
+	MatchByAmountDate  MatchConfidence = "amount_date"
+)
+
 type TransferMatch struct {
-	From Transaction `json:"from"`
-	To   Transaction `json:"to"`
+	From       Transaction     `json:"from"`
+	To         Transaction     `json:"to"`
+	Confidence MatchConfidence `json:"confidence"`
 }
 
 // Transfer links two transactions representing the same money moving
