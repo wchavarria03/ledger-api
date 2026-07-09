@@ -18,6 +18,7 @@ type AccountRepository interface {
 type TransactionRepository interface {
 	Create(ctx context.Context, tx *models.Transaction) (*models.Transaction, error)
 	UpsertBatch(ctx context.Context, accountID string, sourceFile string, txs []models.Transaction) error
+	GetByID(ctx context.Context, id string) (*models.Transaction, error)
 	GetByAccountID(ctx context.Context, accountID string) ([]*models.Transaction, error)
 	ListFiltered(ctx context.Context, accountID string, filter models.TxFilter) ([]*models.Transaction, int, error)
 	GetByAccountIDsInRange(ctx context.Context, accountIDs []string, from, to time.Time) ([]*models.Transaction, error)

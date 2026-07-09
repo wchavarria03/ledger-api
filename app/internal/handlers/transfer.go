@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"ledger-api/app/internal/models"
+	"ledger-api/app/internal/services"
 )
 
 func NewTransferHandler(svc TransferService) *TransferHandler {
@@ -39,6 +41,35 @@ func (h *TransferHandler) Create(c *gin.Context) {
 	})
 	if err != nil {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, result)
+}
+
+// Link handles POST /v1/transfers/link — links two already-imported transactions
+// as a matched transfer pair without creating any new transaction rows.
+func (h *TransferHandler) Link(c *gin.Context) {
+	var req linkTransferRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.FromTxID == req.ToTxID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "from_tx_id and to_tx_id must be different"})
+		return
+	}
+
+	result, err := h.svc.LinkTransactions(c.Request.Context(), req.FromTxID, req.ToTxID)
+	if err != nil {
+		switch {
+		case errors.Is(err, services.ErrFromTxNotFound), errors.Is(err, services.ErrToTxNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		case errors.Is(err, services.ErrFromTxLinked), errors.Is(err, services.ErrToTxLinked):
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		}
 		return
 	}
 

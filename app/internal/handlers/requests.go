@@ -55,3 +55,8 @@ type createTransferRequest struct {
 	Date          string  `json:"date" binding:"required"`
 	Description   string  `json:"description"`
 }
+
+type linkTransferRequest struct {
+	FromTxID string `json:"from_tx_id" binding:"required"`
+	ToTxID   string `json:"to_tx_id" binding:"required"`
+}

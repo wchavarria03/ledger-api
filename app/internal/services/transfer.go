@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -9,6 +10,13 @@ import (
 	"github.com/shopspring/decimal"
 
 	"ledger-api/app/internal/models"
+)
+
+var (
+	ErrFromTxNotFound = errors.New("from_tx_id not found")
+	ErrToTxNotFound   = errors.New("to_tx_id not found")
+	ErrFromTxLinked   = errors.New("from_tx_id is already linked to a transfer")
+	ErrToTxLinked     = errors.New("to_tx_id is already linked to a transfer")
 )
 
 func NewTransferService(accounts AccountRepository, transactions TransactionRepository, transfers TransferRepository) *TransferService {
@@ -104,6 +112,74 @@ func (s *TransferService) CreateTransfer(ctx context.Context, input models.Trans
 	}
 	if err := s.transactions.SetTransferID(ctx, toTx.ID, transfer.ID); err != nil {
 		return nil, fmt.Errorf("link incoming transaction to transfer: %w", err)
+	}
+	fromTx.TransferID = transfer.ID
+	toTx.TransferID = transfer.ID
+
+	return &models.TransferResult{
+		Transfer:        *transfer,
+		FromTransaction: *fromTx,
+		ToTransaction:   *toTx,
+	}, nil
+}
+
+// LinkTransactions links two already-existing transactions as the two legs of a
+// transfer. Unlike CreateTransfer, no new transaction rows are created — the
+// caller supplies the IDs of transactions that came from an imported statement.
+func (s *TransferService) LinkTransactions(ctx context.Context, fromTxID, toTxID string) (*models.TransferResult, error) {
+	if fromTxID == "" || toTxID == "" {
+		return nil, fmt.Errorf("from_tx_id and to_tx_id are required")
+	}
+	if fromTxID == toTxID {
+		return nil, fmt.Errorf("from_tx_id and to_tx_id must be different")
+	}
+
+	fromTx, err := s.transactions.GetByID(ctx, fromTxID)
+	if err != nil {
+		return nil, fmt.Errorf("lookup from transaction: %w", err)
+	}
+	if fromTx == nil {
+		return nil, ErrFromTxNotFound
+	}
+
+	toTx, err := s.transactions.GetByID(ctx, toTxID)
+	if err != nil {
+		return nil, fmt.Errorf("lookup to transaction: %w", err)
+	}
+	if toTx == nil {
+		return nil, ErrToTxNotFound
+	}
+
+	if fromTx.TransferID != "" {
+		return nil, ErrFromTxLinked
+	}
+	if toTx.TransferID != "" {
+		return nil, ErrToTxLinked
+	}
+
+	if fromTx.Currency != toTx.Currency {
+		return nil, fmt.Errorf(
+			"currency mismatch: from_tx uses %s, to_tx uses %s",
+			fromTx.Currency, toTx.Currency,
+		)
+	}
+	if !fromTx.Amount.Add(toTx.Amount).IsZero() {
+		return nil, fmt.Errorf(
+			"amounts must net to zero: %s + %s = %s",
+			fromTx.Amount, toTx.Amount, fromTx.Amount.Add(toTx.Amount),
+		)
+	}
+
+	transfer, err := s.transfers.Create(ctx, fromTxID, toTxID, nil, "manual")
+	if err != nil {
+		return nil, fmt.Errorf("link transfer: %w", err)
+	}
+
+	if err := s.transactions.SetTransferID(ctx, fromTxID, transfer.ID); err != nil {
+		return nil, fmt.Errorf("link from transaction: %w", err)
+	}
+	if err := s.transactions.SetTransferID(ctx, toTxID, transfer.ID); err != nil {
+		return nil, fmt.Errorf("link to transaction: %w", err)
 	}
 	fromTx.TransferID = transfer.ID
 	toTx.TransferID = transfer.ID

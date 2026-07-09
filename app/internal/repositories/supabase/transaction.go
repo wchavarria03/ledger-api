@@ -93,6 +93,42 @@ func (r *TransactionRepository) Create(ctx context.Context, tx *models.Transacti
 	}, nil
 }
 
+func (r *TransactionRepository) GetByID(ctx context.Context, id string) (*models.Transaction, error) {
+	rows, err := databases.Get[[]*transactionRowFull](ctx, r.client, "/rest/v1/transactions", url.Values{
+		"id":     []string{"eq." + id},
+		"select": []string{"*,transaction_categories(categories(id,name,color,parent_id))"},
+		"limit":  []string{"1"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	row := rows[0]
+	date, _ := time.Parse("2006-01-02", row.Date)
+	cats := make([]*models.Category, 0, len(row.TransactionCategories))
+	for _, tc := range row.TransactionCategories {
+		if tc.Category != nil {
+			cats = append(cats, tc.Category)
+		}
+	}
+	return &models.Transaction{
+		ID:          row.ID,
+		AccountID:   row.AccountID,
+		Date:        date,
+		Reference:   row.Reference,
+		Code:        row.Code,
+		Type:        models.TransactionType(row.Type),
+		Description: row.Description,
+		Amount:      row.Amount,
+		Balance:     row.Balance,
+		Currency:    row.Currency,
+		TransferID:  row.TransferID,
+		Categories:  cats,
+	}, nil
+}
+
 func (r *TransactionRepository) GetByAccountID(ctx context.Context, accountID string) ([]*models.Transaction, error) {
 	rows, err := databases.Get[[]*transactionRowFull](ctx, r.client, "/rest/v1/transactions", url.Values{
 		"account_id": []string{"eq." + accountID},
