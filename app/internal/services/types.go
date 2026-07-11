@@ -42,3 +42,11 @@ type BudgetService struct {
 	accounts     AccountRepository
 	transactions TransactionRepository
 }
+
+type EnvelopeService struct {
+	envelopes EnvelopeRepository
+}
+
+type ReminderService struct {
+	reminders ReminderRepository
+}

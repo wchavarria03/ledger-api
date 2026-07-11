@@ -42,3 +42,12 @@ type BudgetHandler struct {
 	budgets   BudgetManager
 	transfers TransferService
 }
+
+type EnvelopeHandler struct {
+	svc EnvelopeManager
+}
+
+type ReminderHandler struct {
+	svc       ReminderManager
+	transfers TransferService
+}

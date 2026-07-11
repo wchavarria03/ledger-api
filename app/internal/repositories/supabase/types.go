@@ -37,3 +37,11 @@ type TransferRepository struct {
 type BudgetRepository struct {
 	client *databases.SupabaseClient
 }
+
+type EnvelopeRepository struct {
+	client *databases.SupabaseClient
+}
+
+type ReminderRepository struct {
+	client *databases.SupabaseClient
+}

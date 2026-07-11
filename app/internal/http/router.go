@@ -27,12 +27,23 @@ func setupRoutes(engine *gin.Engine, hdlrs *handlers.Registry, jwksURL string) {
 	v1.GET("/me", hdlrs.Me.GetMe)
 	setupAccountRoutes(v1, hdlrs)
 	setupBudgetRoutes(v1, hdlrs)
+	setupEnvelopeRoutes(v1, hdlrs)
+	setupReminderRoutes(v1, hdlrs)
 	setupCategoryRoutes(v1, hdlrs)
 	setupReportRoutes(v1, hdlrs)
 	v1.POST("/import", hdlrs.Upload.Import)
 	v1.POST("/transfers", hdlrs.Transfer.Create)
 	v1.POST("/transfers/link", hdlrs.Transfer.Link)
 	v1.GET("/transfers/matches", hdlrs.Transfer.GetMatches)
+}
+
+func setupEnvelopeRoutes(rg *gin.RouterGroup, hdlrs *handlers.Registry) {
+	env := rg.Group("/envelopes")
+	env.GET("", hdlrs.Envelope.List)
+	env.POST("", hdlrs.Envelope.Create)
+	env.PATCH("/:id", hdlrs.Envelope.Update)
+	env.DELETE("/:id", hdlrs.Envelope.Delete)
+	env.POST("/:id/contribute", hdlrs.Envelope.Contribute)
 }
 
 func setupBudgetRoutes(rg *gin.RouterGroup, hdlrs *handlers.Registry) {
@@ -44,6 +55,15 @@ func setupBudgetRoutes(rg *gin.RouterGroup, hdlrs *handlers.Registry) {
 	budgets.POST("/:id/acknowledge", hdlrs.Budget.Acknowledge)
 }
 
+func setupReminderRoutes(rg *gin.RouterGroup, hdlrs *handlers.Registry) {
+	reminders := rg.Group("/reminders")
+	reminders.GET("", hdlrs.Reminder.List)
+	reminders.POST("", hdlrs.Reminder.Create)
+	reminders.PATCH("/:id", hdlrs.Reminder.Update)
+	reminders.DELETE("/:id", hdlrs.Reminder.Delete)
+	reminders.POST("/:id/complete", hdlrs.Reminder.Complete)
+}
+
 func setupAccountRoutes(rg *gin.RouterGroup, hdlrs *handlers.Registry) {
 	accounts := rg.Group("/accounts")
 	accounts.GET("", hdlrs.Account.List)
@@ -52,6 +72,8 @@ func setupAccountRoutes(rg *gin.RouterGroup, hdlrs *handlers.Registry) {
 	accounts.PATCH("/:id", hdlrs.Account.Update)
 	accounts.GET("/:id/transactions", hdlrs.Transaction.ListByAccount)
 	accounts.POST("/:id/transactions", hdlrs.Transaction.Create)
+	accounts.GET("/:id/envelopes", hdlrs.Envelope.ListByAccount)
+	accounts.GET("/:id/reminders", hdlrs.Reminder.ListByAccount)
 	accounts.GET("/:id/rule-exceptions", hdlrs.RuleException.ListByAccount)
 	accounts.POST("/:id/rule-exceptions", hdlrs.RuleException.Disable)
 	accounts.DELETE("/:id/rule-exceptions/:rule_id", hdlrs.RuleException.Enable)

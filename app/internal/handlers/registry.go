@@ -6,6 +6,8 @@ import "ledger-api/app/internal/services"
 type Registry struct {
 	Account       *AccountHandler
 	Budget        *BudgetHandler
+	Envelope      *EnvelopeHandler
+	Reminder      *ReminderHandler
 	Category      *CategoryHandler
 	Dump          *DumpHandler
 	Extract       *ExtractHandler
@@ -21,6 +23,8 @@ func NewRegistry(svc *services.Registry) (*Registry, error) {
 	return &Registry{
 		Account:       NewAccountHandler(svc.Account),
 		Budget:        NewBudgetHandler(svc.Budget, svc.Transfer),
+		Envelope:      NewEnvelopeHandler(svc.Envelope),
+		Reminder:      NewReminderHandler(svc.Reminder, svc.Transfer),
 		Category:      NewCategoryHandler(svc.Category),
 		Dump:          NewDumpHandler(),
 		Extract:       NewExtractHandler(svc.Import),

@@ -64,3 +64,21 @@ type BudgetManager interface {
 	Delete(ctx context.Context, id string) error
 	Acknowledge(ctx context.Context, budgetID, month, action string, transferID *string) (*models.BudgetAcknowledgment, error)
 }
+
+type EnvelopeManager interface {
+	List(ctx context.Context) ([]models.EnvelopeStatus, error)
+	ListByAccountID(ctx context.Context, accountID string) ([]models.EnvelopeStatus, error)
+	Create(ctx context.Context, input models.EnvelopeInput) (*models.EnvelopeStatus, error)
+	Update(ctx context.Context, id string, fields map[string]any) (*models.EnvelopeStatus, error)
+	Delete(ctx context.Context, id string) error
+	Contribute(ctx context.Context, id string, input models.ContributionInput) (*models.EnvelopeStatus, error)
+}
+
+type ReminderManager interface {
+	List(ctx context.Context) ([]models.ReminderWithStatus, error)
+	ListByAccountID(ctx context.Context, accountID string) ([]models.ReminderWithStatus, error)
+	Create(ctx context.Context, input models.ReminderInput) (*models.ReminderWithStatus, error)
+	Update(ctx context.Context, id string, fields map[string]any) (*models.ReminderWithStatus, error)
+	Delete(ctx context.Context, id string) error
+	Complete(ctx context.Context, id string) (*models.ReminderWithStatus, error)
+}

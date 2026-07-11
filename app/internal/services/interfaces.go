@@ -74,3 +74,25 @@ type BudgetRepository interface {
 	Acknowledge(ctx context.Context, budgetID, month, action string, transferID *string) (*models.BudgetAcknowledgment, error)
 	ListAcknowledgments(ctx context.Context, budgetIDs []string, month string) ([]*models.BudgetAcknowledgment, error)
 }
+
+type EnvelopeRepository interface {
+	List(ctx context.Context) ([]*models.Envelope, error)
+	ListByAccountID(ctx context.Context, accountID string) ([]*models.Envelope, error)
+	FindByID(ctx context.Context, id string) (*models.Envelope, error)
+	Create(ctx context.Context, input models.EnvelopeInput) (*models.Envelope, error)
+	Update(ctx context.Context, id string, fields map[string]any) (*models.Envelope, error)
+	Delete(ctx context.Context, id string) error
+	Contribute(ctx context.Context, envelopeID string, input models.ContributionInput) (*models.EnvelopeContribution, error)
+	GetBalances(ctx context.Context, envelopeIDs []string) (map[string]decimal.Decimal, error)
+	SetNextContributionDate(ctx context.Context, id, date string) error
+}
+
+type ReminderRepository interface {
+	List(ctx context.Context) ([]*models.Reminder, error)
+	ListByAccountID(ctx context.Context, accountID string) ([]*models.Reminder, error)
+	FindByID(ctx context.Context, id string) (*models.Reminder, error)
+	Create(ctx context.Context, input models.ReminderInput) (*models.Reminder, error)
+	Update(ctx context.Context, id string, fields map[string]any) (*models.Reminder, error)
+	Delete(ctx context.Context, id string) error
+	MarkCompleted(ctx context.Context, id string) error
+}
