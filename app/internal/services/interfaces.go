@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"ledger-api/app/internal/models"
 )
 
@@ -61,4 +63,14 @@ type AccountRuleExceptionRepository interface {
 	FindByAccount(ctx context.Context, accountID string) ([]string, error)
 	Create(ctx context.Context, accountID, ruleID string) error
 	Delete(ctx context.Context, accountID, ruleID string) error
+}
+
+type BudgetRepository interface {
+	List(ctx context.Context) ([]*models.Budget, error)
+	Create(ctx context.Context, input models.BudgetInput) (*models.Budget, error)
+	FindByID(ctx context.Context, id string) (*models.Budget, error)
+	Update(ctx context.Context, id string, amount decimal.Decimal) (*models.Budget, error)
+	Delete(ctx context.Context, id string) error
+	Acknowledge(ctx context.Context, budgetID, month, action string, transferID *string) (*models.BudgetAcknowledgment, error)
+	ListAcknowledgments(ctx context.Context, budgetIDs []string, month string) ([]*models.BudgetAcknowledgment, error)
 }

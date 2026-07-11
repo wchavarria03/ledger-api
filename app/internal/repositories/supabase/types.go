@@ -33,3 +33,7 @@ type AccountRuleExceptionRepository struct {
 type TransferRepository struct {
 	client *databases.SupabaseClient
 }
+
+type BudgetRepository struct {
+	client *databases.SupabaseClient
+}

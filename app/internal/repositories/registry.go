@@ -14,6 +14,7 @@ type Registry struct {
 	CategoryRules         *supabaserepo.CategoryRuleRepository
 	TransactionCategories *supabaserepo.TransactionCategoryRepository
 	RuleExceptions        *supabaserepo.AccountRuleExceptionRepository
+	Budgets               *supabaserepo.BudgetRepository
 }
 
 func NewRegistry(dbs *databases.Registry) *Registry {
@@ -26,5 +27,6 @@ func NewRegistry(dbs *databases.Registry) *Registry {
 		CategoryRules:         supabaserepo.NewCategoryRuleRepository(dbs.Supabase),
 		TransactionCategories: supabaserepo.NewTransactionCategoryRepository(dbs.Supabase),
 		RuleExceptions:        supabaserepo.NewAccountRuleExceptionRepository(dbs.Supabase),
+		Budgets:               supabaserepo.NewBudgetRepository(dbs.Supabase),
 	}
 }

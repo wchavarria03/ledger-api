@@ -37,3 +37,8 @@ type RuleExceptionHandler struct {
 type TransferHandler struct {
 	svc TransferService
 }
+
+type BudgetHandler struct {
+	budgets   BudgetManager
+	transfers TransferService
+}

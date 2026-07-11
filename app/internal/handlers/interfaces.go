@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"ledger-api/app/internal/models"
 )
 
@@ -53,4 +55,12 @@ type CategoryManager interface {
 	CreateRule(ctx context.Context, r *models.CategoryRule) (*models.CategoryRule, error)
 	DeleteRule(ctx context.Context, id string) error
 	SetTransactionCategories(ctx context.Context, transactionID string, categoryIDs []string) error
+}
+
+type BudgetManager interface {
+	List(ctx context.Context, month string) ([]models.BudgetStatus, error)
+	Create(ctx context.Context, input models.BudgetInput) (*models.Budget, error)
+	Update(ctx context.Context, id string, amount decimal.Decimal) (*models.Budget, error)
+	Delete(ctx context.Context, id string) error
+	Acknowledge(ctx context.Context, budgetID, month, action string, transferID *string) (*models.BudgetAcknowledgment, error)
 }

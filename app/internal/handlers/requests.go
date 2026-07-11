@@ -60,3 +60,23 @@ type linkTransferRequest struct {
 	FromTxID string `json:"from_tx_id" binding:"required"`
 	ToTxID   string `json:"to_tx_id" binding:"required"`
 }
+
+type createBudgetRequest struct {
+	CategoryID string  `json:"category_id" binding:"required"`
+	Currency   string  `json:"currency" binding:"required"`
+	Amount     float64 `json:"amount" binding:"required,gt=0"`
+}
+
+type updateBudgetRequest struct {
+	Amount float64 `json:"amount" binding:"required,gt=0"`
+}
+
+type acknowledgeBudgetRequest struct {
+	Month         string  `json:"month" binding:"required"` // YYYY-MM
+	Action        string  `json:"action" binding:"required"` // kept | moved
+	FromAccountID string  `json:"from_account_id"`
+	ToAccountID   string  `json:"to_account_id"`
+	Amount        float64 `json:"amount"`
+	Currency      string  `json:"currency"`
+	Date          string  `json:"date"` // YYYY-MM-DD, required when action=moved
+}

@@ -26,12 +26,22 @@ func setupRoutes(engine *gin.Engine, hdlrs *handlers.Registry, jwksURL string) {
 
 	v1.GET("/me", hdlrs.Me.GetMe)
 	setupAccountRoutes(v1, hdlrs)
+	setupBudgetRoutes(v1, hdlrs)
 	setupCategoryRoutes(v1, hdlrs)
 	setupReportRoutes(v1, hdlrs)
 	v1.POST("/import", hdlrs.Upload.Import)
 	v1.POST("/transfers", hdlrs.Transfer.Create)
 	v1.POST("/transfers/link", hdlrs.Transfer.Link)
 	v1.GET("/transfers/matches", hdlrs.Transfer.GetMatches)
+}
+
+func setupBudgetRoutes(rg *gin.RouterGroup, hdlrs *handlers.Registry) {
+	budgets := rg.Group("/budgets")
+	budgets.GET("", hdlrs.Budget.List)
+	budgets.POST("", hdlrs.Budget.Create)
+	budgets.PATCH("/:id", hdlrs.Budget.Update)
+	budgets.DELETE("/:id", hdlrs.Budget.Delete)
+	budgets.POST("/:id/acknowledge", hdlrs.Budget.Acknowledge)
 }
 
 func setupAccountRoutes(rg *gin.RouterGroup, hdlrs *handlers.Registry) {

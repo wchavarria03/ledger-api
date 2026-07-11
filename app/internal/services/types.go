@@ -36,3 +36,9 @@ type ReportService struct {
 	repo       TransactionRepository
 	categories CategoryRepository
 }
+
+type BudgetService struct {
+	budgets      BudgetRepository
+	accounts     AccountRepository
+	transactions TransactionRepository
+}
