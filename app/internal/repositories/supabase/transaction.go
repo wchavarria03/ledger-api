@@ -442,6 +442,41 @@ func (r *TransactionRepository) SetTransferID(ctx context.Context, txID, transfe
 	return err
 }
 
+// FindMatchingPattern returns transactions whose description matches the given pattern (case-insensitive).
+// If accountID is non-empty, results are scoped to that account.
+func (r *TransactionRepository) FindMatchingPattern(ctx context.Context, pattern, accountID string) ([]*models.Transaction, error) {
+	params := url.Values{
+		"description": []string{"ilike.*" + pattern + "*"},
+		"select":      []string{"id,account_id,date,reference,code,type,description,amount,balance,currency"},
+		"order":       []string{"date.desc"},
+		"limit":       []string{"200"},
+	}
+	if accountID != "" {
+		params.Set("account_id", "eq."+accountID)
+	}
+	rows, err := databases.Get[[]*transactionRowFull](ctx, r.client, "/rest/v1/transactions", params)
+	if err != nil {
+		return nil, err
+	}
+	txs := make([]*models.Transaction, len(rows))
+	for i, row := range rows {
+		date, _ := time.Parse("2006-01-02", row.Date)
+		txs[i] = &models.Transaction{
+			ID:          row.ID,
+			AccountID:   row.AccountID,
+			Date:        date,
+			Reference:   row.Reference,
+			Code:        row.Code,
+			Type:        models.TransactionType(row.Type),
+			Description: row.Description,
+			Amount:      row.Amount,
+			Balance:     row.Balance,
+			Currency:    row.Currency,
+		}
+	}
+	return txs, nil
+}
+
 func (r *TransactionRepository) UpsertBatch(ctx context.Context, accountID string, sourceFile string, txs []models.Transaction) error {
 	rows := make([]transactionRow, len(txs))
 	for i, tx := range txs {

@@ -11,8 +11,9 @@ func NewCategoryService(
 	categories CategoryRepository,
 	rules CategoryRuleRepository,
 	txCats TransactionCategoryRepository,
+	transactions TransactionRepository,
 ) *CategoryService {
-	return &CategoryService{categories: categories, rules: rules, txCats: txCats}
+	return &CategoryService{categories: categories, rules: rules, txCats: txCats, transactions: transactions}
 }
 
 func (s *CategoryService) List(ctx context.Context) ([]*models.Category, error) {
@@ -49,6 +50,47 @@ func (s *CategoryService) DeleteRule(ctx context.Context, id string) error {
 
 func (s *CategoryService) SetTransactionCategories(ctx context.Context, transactionID string, categoryIDs []string) error {
 	return s.txCats.SetCategories(ctx, transactionID, categoryIDs)
+}
+
+// PreviewRule returns transactions that match the rule's pattern (and optional account scope)
+// so the caller can show a confirmation before applying.
+func (s *CategoryService) PreviewRule(ctx context.Context, ruleID string) ([]*models.Transaction, error) {
+	rule, err := s.rules.FindByID(ctx, ruleID)
+	if err != nil {
+		return nil, err
+	}
+	if rule == nil {
+		return nil, nil
+	}
+	return s.transactions.FindMatchingPattern(ctx, rule.Pattern, rule.AccountID)
+}
+
+// ApplyRule assigns the rule's category to all transactions matching the rule's pattern.
+// Existing category assignments on those transactions are preserved (additive, not replacement).
+// Returns the number of transactions updated.
+func (s *CategoryService) ApplyRule(ctx context.Context, ruleID string) (int, error) {
+	rule, err := s.rules.FindByID(ctx, ruleID)
+	if err != nil {
+		return 0, err
+	}
+	if rule == nil {
+		return 0, nil
+	}
+	txs, err := s.transactions.FindMatchingPattern(ctx, rule.Pattern, rule.AccountID)
+	if err != nil {
+		return 0, err
+	}
+	if len(txs) == 0 {
+		return 0, nil
+	}
+	ids := make([]string, len(txs))
+	for i, tx := range txs {
+		ids[i] = tx.ID
+	}
+	if err := s.txCats.AddCategoryBatch(ctx, ids, rule.CategoryID); err != nil {
+		return 0, err
+	}
+	return len(txs), nil
 }
 
 func (s *CategoryService) ApplyRules(ctx context.Context, accountID, description string) ([]string, error) {

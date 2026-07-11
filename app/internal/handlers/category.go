@@ -117,6 +117,28 @@ func (h *CategoryHandler) DeleteRule(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+func (h *CategoryHandler) PreviewRule(c *gin.Context) {
+	txs, err := h.svc.PreviewRule(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if txs == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "rule not found"})
+		return
+	}
+	c.JSON(http.StatusOK, txs)
+}
+
+func (h *CategoryHandler) ApplyRule(c *gin.Context) {
+	count, err := h.svc.ApplyRule(c.Request.Context(), c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"updated": count})
+}
+
 func (h *CategoryHandler) SetTransactionCategories(c *gin.Context) {
 	var req setTransactionCategoriesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

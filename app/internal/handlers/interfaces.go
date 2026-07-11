@@ -55,6 +55,8 @@ type CategoryManager interface {
 	CreateRule(ctx context.Context, r *models.CategoryRule) (*models.CategoryRule, error)
 	DeleteRule(ctx context.Context, id string) error
 	SetTransactionCategories(ctx context.Context, transactionID string, categoryIDs []string) error
+	PreviewRule(ctx context.Context, ruleID string) ([]*models.Transaction, error)
+	ApplyRule(ctx context.Context, ruleID string) (int, error)
 }
 
 type BudgetManager interface {

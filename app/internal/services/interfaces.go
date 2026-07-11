@@ -26,6 +26,7 @@ type TransactionRepository interface {
 	GetByAccountIDsInRange(ctx context.Context, accountIDs []string, from, to time.Time) ([]*models.Transaction, error)
 	GetCurrentBalances(ctx context.Context, accountIDs []string) (map[string]float64, error)
 	GetLastBalancePerAccount(ctx context.Context, accountIDs []string, before time.Time) (map[string]float64, error)
+	FindMatchingPattern(ctx context.Context, pattern, accountID string) ([]*models.Transaction, error)
 	Delete(ctx context.Context, id string) error
 	SetTransferID(ctx context.Context, txID, transferID string) error
 }
@@ -50,6 +51,7 @@ type CategoryRepository interface {
 
 type CategoryRuleRepository interface {
 	FindAll(ctx context.Context) ([]*models.CategoryRule, error)
+	FindByID(ctx context.Context, id string) (*models.CategoryRule, error)
 	FindByAccountID(ctx context.Context, accountID string) ([]*models.CategoryRule, error)
 	Create(ctx context.Context, r *models.CategoryRule) (*models.CategoryRule, error)
 	Delete(ctx context.Context, id string) error
@@ -57,6 +59,7 @@ type CategoryRuleRepository interface {
 
 type TransactionCategoryRepository interface {
 	SetCategories(ctx context.Context, transactionID string, categoryIDs []string) error
+	AddCategoryBatch(ctx context.Context, txIDs []string, categoryID string) error
 }
 
 type AccountRuleExceptionRepository interface {

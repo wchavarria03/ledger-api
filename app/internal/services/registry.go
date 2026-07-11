@@ -24,7 +24,7 @@ func NewRegistry(repos *repositories.Registry, userID string) *Registry {
 		Budget:         NewBudgetService(repos.Budgets, repos.Accounts, repos.Transactions),
 		Envelope:       NewEnvelopeService(repos.Envelopes),
 		Reminder:       NewReminderService(repos.Reminders),
-		Category:       NewCategoryService(repos.Categories, repos.CategoryRules, repos.TransactionCategories),
+		Category:       NewCategoryService(repos.Categories, repos.CategoryRules, repos.TransactionCategories, repos.Transactions),
 		Classification: classifier,
 		Import:         NewImportService(repos.Accounts, repos.Transactions, classifier, repos.CategoryRules, repos.TransactionCategories, repos.RuleExceptions, transfer, userID),
 		Report:         NewReportService(repos.Transactions, repos.Categories),

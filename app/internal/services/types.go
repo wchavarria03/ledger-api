@@ -22,9 +22,10 @@ type TransferService struct {
 }
 
 type CategoryService struct {
-	categories CategoryRepository
-	rules      CategoryRuleRepository
-	txCats     TransactionCategoryRepository
+	categories   CategoryRepository
+	rules        CategoryRuleRepository
+	txCats       TransactionCategoryRepository
+	transactions TransactionRepository
 }
 
 type AccountService struct {

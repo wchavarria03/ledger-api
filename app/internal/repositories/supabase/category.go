@@ -77,6 +77,20 @@ func (r *CategoryRuleRepository) FindAll(ctx context.Context) ([]*models.Categor
 	})
 }
 
+func (r *CategoryRuleRepository) FindByID(ctx context.Context, id string) (*models.CategoryRule, error) {
+	results, err := databases.Get[[]*models.CategoryRule](ctx, r.client, "/rest/v1/category_rules", url.Values{
+		"id":    []string{"eq." + id},
+		"limit": []string{"1"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return nil, nil
+	}
+	return results[0], nil
+}
+
 func (r *CategoryRuleRepository) FindByAccountID(ctx context.Context, accountID string) ([]*models.CategoryRule, error) {
 	return databases.Get[[]*models.CategoryRule](ctx, r.client, "/rest/v1/category_rules", url.Values{
 		"or":    []string{"(account_id.is.null,account_id.eq." + accountID + ")"},
@@ -121,5 +135,25 @@ func (r *TransactionCategoryRepository) SetCategories(ctx context.Context, trans
 		rows[i] = row{TransactionID: transactionID, CategoryID: id}
 	}
 	_, err := databases.Post[struct{}](ctx, r.client, "/rest/v1/transaction_categories", rows, "")
+	return err
+}
+
+// AddCategoryBatch inserts (transaction_id, category_id) rows without replacing existing assignments.
+// Conflicts on (transaction_id, category_id) are silently ignored.
+func (r *TransactionCategoryRepository) AddCategoryBatch(ctx context.Context, txIDs []string, categoryID string) error {
+	if len(txIDs) == 0 {
+		return nil
+	}
+	type row struct {
+		TransactionID string `json:"transaction_id"`
+		CategoryID    string `json:"category_id"`
+	}
+	rows := make([]row, len(txIDs))
+	for i, id := range txIDs {
+		rows[i] = row{TransactionID: id, CategoryID: categoryID}
+	}
+	_, err := databases.Post[struct{}](ctx, r.client,
+		"/rest/v1/transaction_categories?on_conflict=transaction_id,category_id",
+		rows, "resolution=ignore-duplicates")
 	return err
 }

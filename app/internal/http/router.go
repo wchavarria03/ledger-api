@@ -95,6 +95,8 @@ func setupCategoryRoutes(rg *gin.RouterGroup, hdlrs *handlers.Registry) {
 	rules.GET("", hdlrs.Category.ListRules)
 	rules.POST("", hdlrs.Category.CreateRule)
 	rules.DELETE("/:id", hdlrs.Category.DeleteRule)
+	rules.GET("/:id/preview", hdlrs.Category.PreviewRule)
+	rules.POST("/:id/apply", hdlrs.Category.ApplyRule)
 
 	txs := rg.Group("/transactions")
 	txs.PATCH("/:id/categories", hdlrs.Category.SetTransactionCategories)
