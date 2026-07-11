@@ -32,12 +32,12 @@ func NewImportService(
 }
 
 func (s *ImportService) Import(ctx context.Context, stmt *models.Statement, bankName string) error {
-	_, _, err := s.doImport(ctx, stmt, bankName, nil)
+	_, _, _, err := s.doImport(ctx, stmt, bankName, nil)
 	return err
 }
 
 func (s *ImportService) ImportWithSummary(ctx context.Context, stmt *models.Statement, bankName string, catOverrides map[int][]string) (*models.ImportSummary, error) {
-	acc, linked, err := s.doImport(ctx, stmt, bankName, catOverrides)
+	acc, linked, isNew, err := s.doImport(ctx, stmt, bankName, catOverrides)
 	if err != nil {
 		return nil, err
 	}
@@ -48,6 +48,7 @@ func (s *ImportService) ImportWithSummary(ctx context.Context, stmt *models.Stat
 	return &models.ImportSummary{
 		AccountName:          acc.Name,
 		AccountNumber:        stmt.AccountNumber,
+		AccountIsNew:         isNew,
 		Currency:             acc.Currency,
 		Bank:                 bank,
 		ImportedCount:        len(stmt.Transactions),
@@ -79,7 +80,7 @@ func (s *ImportService) CheckOverlap(ctx context.Context, stmt *models.Statement
 	return len(existing), nil
 }
 
-func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, bankName string, catOverrides map[int][]string) (*models.Account, int, error) {
+func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, bankName string, catOverrides map[int][]string) (*models.Account, int, bool, error) {
 	bank := bankName
 	if idx := strings.Index(bankName, "/"); idx != -1 {
 		bank = bankName[:idx]
@@ -93,10 +94,11 @@ func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, ba
 
 	acc, err := s.accounts.FindByAccountNumber(ctx, stmt.AccountNumber)
 	if err != nil {
-		return nil, 0, fmt.Errorf("lookup account: %w", err)
+		return nil, 0, false, fmt.Errorf("lookup account: %w", err)
 	}
 
-	if acc == nil {
+	isNew := acc == nil
+	if isNew {
 		currency := "CRC"
 		if len(stmt.Transactions) > 0 {
 			currency = stmt.Transactions[0].Currency
@@ -116,17 +118,17 @@ func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, ba
 			UserID:        userID,
 		})
 		if err != nil {
-			return nil, 0, fmt.Errorf("upsert account: %w", err)
+			return nil, 0, false, fmt.Errorf("upsert account: %w", err)
 		}
 	}
 
 	txs, err := s.classifier.Apply(ctx, bank, stmt.Transactions)
 	if err != nil {
-		return nil, 0, fmt.Errorf("classify transactions: %w", err)
+		return nil, 0, false, fmt.Errorf("classify transactions: %w", err)
 	}
 
 	if err := s.transactions.UpsertBatch(ctx, acc.ID, stmt.SourceFile, txs); err != nil {
-		return nil, 0, fmt.Errorf("upsert transactions: %w", err)
+		return nil, 0, false, fmt.Errorf("upsert transactions: %w", err)
 	}
 
 	// Apply user-supplied category overrides before auto-categorization so
@@ -143,7 +145,7 @@ func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, ba
 	// Errors here are non-fatal — same best-effort pattern as autoCategorize.
 	linked := s.autoReconcile(ctx, stmt)
 
-	return acc, linked, nil
+	return acc, linked, isNew, nil
 }
 
 // autoReconcile runs transfer reconciliation across all accounts for the
