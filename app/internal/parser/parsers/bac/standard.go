@@ -191,7 +191,11 @@ func deriveType(code, description string, amount decimal.Decimal) models.Transac
 	if strings.Contains(desc, "INTERES") && amount.IsNegative() {
 		return models.TypeExpense
 	}
-	if code == "TF" {
+	// BAC also codes some third-party SINPE Móvil payments (e.g. utility bills)
+	// as "TF", not just real inter-account transfers. Require the description to
+	// carry transfer-like language too, matching the signal deriveSavingsType
+	// uses ("TEF A"/"TEF DE" for outbound/inbound electronic transfers).
+	if code == "TF" && strings.HasPrefix(desc, "TEF") {
 		return models.TypeTransfer
 	}
 	if amount.IsNegative() {

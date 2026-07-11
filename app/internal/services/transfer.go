@@ -157,20 +157,33 @@ func (s *TransferService) LinkTransactions(ctx context.Context, fromTxID, toTxID
 		return nil, ErrToTxLinked
 	}
 
-	if fromTx.Currency != toTx.Currency {
-		return nil, fmt.Errorf(
-			"currency mismatch: from_tx uses %s, to_tx uses %s",
-			fromTx.Currency, toTx.Currency,
-		)
-	}
-	if !fromTx.Amount.Add(toTx.Amount).IsZero() {
-		return nil, fmt.Errorf(
-			"amounts must net to zero: %s + %s = %s",
-			fromTx.Amount, toTx.Amount, fromTx.Amount.Add(toTx.Amount),
-		)
+	var exchangeRate *float64
+	if fromTx.Currency == toTx.Currency {
+		if !fromTx.Amount.Add(toTx.Amount).IsZero() {
+			return nil, fmt.Errorf(
+				"amounts must net to zero: %s + %s = %s",
+				fromTx.Amount, toTx.Amount, fromTx.Amount.Add(toTx.Amount),
+			)
+		}
+	} else {
+		// Cross-currency link (e.g. an informal currency exchange with someone
+		// else): one leg must be a debit and the other a credit, and we derive
+		// the implied rate from the two amounts rather than requiring them to
+		// net to zero (they're in different currencies).
+		if fromTx.Amount.Sign() == toTx.Amount.Sign() {
+			return nil, fmt.Errorf(
+				"cross-currency transfer legs must have opposite signs: from_tx=%s, to_tx=%s",
+				fromTx.Amount, toTx.Amount,
+			)
+		}
+		if fromTx.Amount.IsZero() || toTx.Amount.IsZero() {
+			return nil, fmt.Errorf("transfer legs cannot have a zero amount")
+		}
+		rate, _ := toTx.Amount.Abs().Div(fromTx.Amount.Abs()).Float64()
+		exchangeRate = &rate
 	}
 
-	transfer, err := s.transfers.Create(ctx, fromTxID, toTxID, nil, "manual")
+	transfer, err := s.transfers.Create(ctx, fromTxID, toTxID, exchangeRate, "manual")
 	if err != nil {
 		return nil, fmt.Errorf("link transfer: %w", err)
 	}
