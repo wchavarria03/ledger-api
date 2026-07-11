@@ -19,13 +19,10 @@ var savingsMonths = map[string]int{
 	"JUL": 7, "AGO": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DIC": 12,
 }
 
-// savingsCutoffRe matches the cut-off date embedded in header lines like "3101012009 30/JUN/26".
-var savingsCutoffRe = regexp.MustCompile(`(\d{2})/([A-Z]{3})/(\d{2,4})`)
+// savingsCutoffRe matches date lines like "30/JUN/26" that carry the statement cut-off date.
+var savingsCutoffRe = regexp.MustCompile(`^(\d{2})/([A-Z]{3})/(\d{2,4})$`)
 
-// savingsTxRe matches a single-line transaction row from the PDF extraction:
-// [reference digits]  [MMM/DD date]  [description words]  [amount]
-// Non-greedy description capture ensures the trailing amount is always the last token.
-var savingsTxRe = regexp.MustCompile(`^(\d+)\s+([A-Z]{3}/\d{2})\s+(.+?)\s+([\d,]+\.\d{2})$`)
+const savingsFieldCount = 4 // ref | date | description | amount (one column — debit or credit)
 
 func init() {
 	parser.Register(&savingsParser{})
@@ -46,14 +43,18 @@ func (p *savingsParser) Parse(text string) (*models.Statement, error) {
 	lines := strings.Split(text, "\n")
 
 	var (
-		accountNumber      string
-		currency           = "CRC"
-		cutoffYear         int
-		cutoffMonth        int
-		inTable            bool
-		closingBalance     decimal.Decimal
-		closingBalanceSet  bool
-		transactions       []models.Transaction
+		accountNumber     string
+		currency          = "CRC"
+		cutoffYear        int
+		cutoffMonth       int
+		inTable           bool
+		afterUltimaLinea  int // 0 = not seen; 1 = "ÚLTIMA LÍNEA" seen; 2 = "SALDO AL CORTE" seen
+		closingBalance    decimal.Decimal
+		closingBalanceSet bool
+		transactions      []models.Transaction
+		fields            []string
+		nextIsIBAN        bool
+		nextIsCurrency    bool
 	)
 
 	for _, rawLine := range lines {
@@ -62,30 +63,50 @@ func (p *savingsParser) Parse(text string) (*models.Statement, error) {
 			continue
 		}
 
-		// IBAN: "Cuenta IBAN: CR34 0102 0000 9361 1222 62"
-		// Strip label and spaces, then validate against the shared ibanPattern.
-		if accountNumber == "" && strings.HasPrefix(trimmed, "Cuenta IBAN:") {
-			raw := strings.TrimPrefix(trimmed, "Cuenta IBAN:")
-			raw = strings.ReplaceAll(strings.TrimSpace(raw), " ", "")
+		// After ÚLTIMA LÍNEA: consume "SALDO AL CORTE" then the balance value.
+		if afterUltimaLinea > 0 {
+			if afterUltimaLinea == 1 {
+				// Expect "SALDO AL CORTE" next
+				afterUltimaLinea = 2
+				continue
+			}
+			// afterUltimaLinea == 2: this line is the closing balance
+			closingBalance = parseAmount(trimmed)
+			closingBalanceSet = true
+			break
+		}
+
+		// IBAN: "Cuenta IBAN:" appears on its own line; the value is the next line.
+		if nextIsIBAN {
+			raw := strings.ReplaceAll(trimmed, " ", "")
 			if ibanPattern.MatchString(raw) {
 				accountNumber = raw
 			}
+			nextIsIBAN = false
+			continue
+		}
+		if trimmed == "Cuenta IBAN:" {
+			nextIsIBAN = true
 			continue
 		}
 
-		// Currency: "Moneda: U.S. DOLLAR" → "USD"; colones is the default ("CRC").
-		if strings.HasPrefix(trimmed, "Moneda:") {
-			moneda := strings.ToUpper(strings.TrimSpace(strings.TrimPrefix(trimmed, "Moneda:")))
+		// Currency: "Moneda:" on its own line; value is the next line.
+		if nextIsCurrency {
+			moneda := strings.ToUpper(trimmed)
 			if strings.Contains(moneda, "DOLLAR") || strings.Contains(moneda, "USD") {
 				currency = "USD"
 			} else if strings.Contains(moneda, "EURO") {
 				currency = "EUR"
 			}
+			nextIsCurrency = false
+			continue
+		}
+		if trimmed == "Moneda:" {
+			nextIsCurrency = true
 			continue
 		}
 
-		// Cut-off date from header lines like "3101012009 30/JUN/26".
-		// We need the year (and month) for per-transaction date reconstruction.
+		// Cut-off date from a standalone line like "30/JUN/26".
 		if cutoffYear == 0 && !inTable {
 			if m := savingsCutoffRe.FindStringSubmatch(trimmed); m != nil {
 				if mo, ok := savingsMonths[m[2]]; ok {
@@ -97,9 +118,10 @@ func (p *savingsParser) Parse(text string) (*models.Statement, error) {
 			}
 		}
 
-		// "NO. REFERENCIA FECHA CONCEPTO DÉBITOS CRÉDITOS" marks the start of transactions.
-		if strings.HasPrefix(trimmed, "NO. REFERENCIA") {
+		// "NO. REFERENCIA" is the column-header line that starts the transaction table.
+		if trimmed == "NO. REFERENCIA" {
 			inTable = true
+			fields = fields[:0]
 			continue
 		}
 
@@ -107,29 +129,35 @@ func (p *savingsParser) Parse(text string) (*models.Statement, error) {
 			continue
 		}
 
-		// "ÚLTIMA LÍNEA SALDO AL CORTE 2,604.35" ends the table.
-		if strings.HasPrefix(trimmed, "ÚLTIMA LÍNEA") {
-			parts := strings.Fields(trimmed)
-			if len(parts) > 0 {
-				closingBalance = parseAmount(parts[len(parts)-1])
-				closingBalanceSet = true
-			}
-			break
+		// "ÚLTIMA LÍNEA" ends the transaction table.
+		if trimmed == "ÚLTIMA LÍNEA" {
+			afterUltimaLinea = 1
+			continue
 		}
 
-		tx, err := parseSavingsLine(trimmed, currency, cutoffYear, cutoffMonth)
-		if err != nil {
-			continue // non-transaction lines between header and ÚLTIMA LÍNEA are skipped
+		// Skip the remaining column-header lines that appear immediately after
+		// "NO. REFERENCIA" and would pollute the field accumulator.
+		if isSavingsColumnHeader(trimmed) {
+			continue
 		}
-		transactions = append(transactions, tx)
+
+		fields = append(fields, trimmed)
+
+		if len(fields) == savingsFieldCount {
+			tx, err := parseSavingsFields(fields, currency, cutoffYear, cutoffMonth)
+			if err == nil {
+				transactions = append(transactions, tx)
+			}
+			fields = fields[:0]
+		}
 	}
 
 	if len(transactions) == 0 {
 		return nil, fmt.Errorf("bac/savings: no transactions found — verify the PDF matches this format")
 	}
 
-	// Reconstruct the per-transaction running balance by walking backwards from the closing balance.
-	// Each transaction's balance is the account balance AFTER that transaction applied.
+	// Reconstruct the per-transaction running balance by walking backwards from the closing
+	// balance. Each stored balance is the account value AFTER that transaction applied.
 	if closingBalanceSet {
 		running := closingBalance
 		for i := len(transactions) - 1; i >= 0; i-- {
@@ -145,20 +173,29 @@ func (p *savingsParser) Parse(text string) (*models.Statement, error) {
 	}, nil
 }
 
-func parseSavingsLine(line, currency string, cutoffYear, cutoffMonth int) (models.Transaction, error) {
-	m := savingsTxRe.FindStringSubmatch(line)
-	if m == nil {
-		return models.Transaction{}, fmt.Errorf("does not match transaction pattern")
+// isSavingsColumnHeader returns true for the column-header lines that appear once
+// after "NO. REFERENCIA" and must not enter the field accumulator.
+func isSavingsColumnHeader(s string) bool {
+	switch s {
+	case "FECHA", "CONCEPTO", "DÉBITOS", "CRÉDITOS":
+		return true
 	}
-	// m[1]=reference  m[2]=date(MMM/DD)  m[3]=description  m[4]=amount
+	return false
+}
 
-	date, err := parseSavingsDate(m[2], cutoffYear, cutoffMonth)
+// parseSavingsFields converts 4 raw lines into a Transaction.
+// Column order: reference | date (MMM/DD) | description | amount (always positive in PDF)
+func parseSavingsFields(fields []string, currency string, cutoffYear, cutoffMonth int) (models.Transaction, error) {
+	date, err := parseSavingsDate(fields[1], cutoffYear, cutoffMonth)
 	if err != nil {
 		return models.Transaction{}, err
 	}
 
-	absAmount := parseAmount(m[4])
-	description := m[3]
+	absAmount := parseAmount(fields[3])
+	if absAmount.IsZero() {
+		return models.Transaction{}, fmt.Errorf("zero amount for ref %s", fields[0])
+	}
+	description := fields[2]
 
 	amount := absAmount
 	if isSavingsDebit(description) {
@@ -167,7 +204,7 @@ func parseSavingsLine(line, currency string, cutoffYear, cutoffMonth int) (model
 
 	return models.Transaction{
 		Date:        date,
-		Reference:   m[1],
+		Reference:   fields[0],
 		Type:        deriveSavingsType(description, amount),
 		Description: description,
 		Amount:      amount,
@@ -175,9 +212,9 @@ func parseSavingsLine(line, currency string, cutoffYear, cutoffMonth int) (model
 	}, nil
 }
 
-// parseSavingsDate converts "JUN/01" to a time.Time using the statement cut-off year.
-// If the transaction month exceeds the cut-off month, the transaction is from the prior year
-// (handles statements that span a year boundary, e.g. cut-off JAN/26 with DEC transactions).
+// parseSavingsDate converts "JUN/01" to time.Time using the statement cut-off year.
+// If the transaction month exceeds the cut-off month, the transaction belongs to the prior
+// year (handles statements that span a year boundary, e.g. cut-off JAN/26 with DEC entries).
 func parseSavingsDate(s string, cutoffYear, cutoffMonth int) (time.Time, error) {
 	parts := strings.SplitN(s, "/", 2)
 	if len(parts) != 2 {
@@ -210,8 +247,8 @@ func savingsParseYear(s string) (int, error) {
 }
 
 // isSavingsDebit returns true when the description signals money leaving this account.
-// BAC savings accounts use "TEF A" for outbound transfers; purchases and fees are
-// also debits. Everything else (BAC Objetivos releases, TEF DE, interest) is a credit.
+// BAC savings uses "TEF A" for outbound electronic transfers. Everything else
+// (BAC Objetivos goal releases, "TEF DE" inbound, interest) is a credit.
 func isSavingsDebit(description string) bool {
 	desc := strings.ToUpper(description)
 	return strings.HasPrefix(desc, "TEF A") ||
@@ -234,11 +271,9 @@ func deriveSavingsType(description string, amount decimal.Decimal) models.Transa
 	if strings.Contains(desc, "INTERES") && amount.IsNegative() {
 		return models.TypeExpense
 	}
-	// TEF (electronic transfer): both outbound (TEF A) and inbound (TEF DE)
 	if strings.HasPrefix(desc, "TEF ") {
 		return models.TypeTransfer
 	}
-	// BAC savings goals releasing funds back to the main account
 	if strings.HasPrefix(desc, "BAC OBJETIVOS") {
 		return models.TypeTransfer
 	}
