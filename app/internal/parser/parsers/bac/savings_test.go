@@ -2,10 +2,13 @@ package bac_test
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"testing"
 
 	"ledger-api/app/internal/parser"
 	_ "ledger-api/app/internal/parser/parsers/bac"
+	pdfReader "ledger-api/app/internal/pdf"
 )
 
 // sampleSavingsText mirrors the one-cell-per-line output produced by ledongthuc/pdf.
@@ -141,5 +144,54 @@ func TestSavingsParser(t *testing.T) {
 	opening := stmt.Transactions[0].Balance.Sub(stmt.Transactions[0].Amount)
 	if opening.StringFixed(2) != "3624.35" {
 		t.Errorf("reconstructed opening balance: expected 3624.35, got %s", opening.StringFixed(2))
+	}
+}
+
+func TestSavingsParserFromRealPDF(t *testing.T) {
+	pdfPath := "/Users/wchavarria/Downloads/BAC - USD - Ahorro - June - 2026.pdf"
+
+	// Use the same extraction pipeline as the upload handler
+	data, err := os.ReadFile(pdfPath)
+	if err != nil {
+		t.Skipf("PDF not found at %s: %v", pdfPath, err)
+	}
+
+	reader, err := pdfReader.NewReaderFromBytes(data)
+	if err != nil {
+		t.Fatal("NewReaderFromBytes:", err)
+	}
+
+	var sb strings.Builder
+	for i := 1; i <= reader.GetNumPages(); i++ {
+		text, err := reader.ExtractTextFromPage(i)
+		if err != nil {
+			t.Fatalf("page %d: %v", i, err)
+		}
+		sb.WriteString(text)
+		sb.WriteString("\n")
+	}
+	extracted := sb.String()
+
+	p, err := parser.Detect(extracted)
+	if err != nil {
+		t.Fatal("Detect:", err)
+	}
+	t.Logf("Detected: %s", p.Name())
+
+	stmt, err := p.Parse(extracted)
+	if err != nil {
+		t.Fatal("Parse:", err)
+	}
+
+	t.Logf("AccountNumber: %s  ShortNumber: %s  Transactions: %d",
+		stmt.AccountNumber, stmt.ShortNumber, len(stmt.Transactions))
+	for _, tx := range stmt.Transactions {
+		t.Logf("  %s  ref=%-12s  %-35s  amt=%9s  bal=%s  type=%s",
+			tx.Date.Format("2006-01-02"), tx.Reference, tx.Description,
+			tx.Amount.StringFixed(2), tx.Balance.StringFixed(2), tx.Type)
+	}
+
+	if len(stmt.Transactions) == 0 {
+		t.Error("no transactions parsed from real PDF")
 	}
 }
