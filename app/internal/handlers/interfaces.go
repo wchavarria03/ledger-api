@@ -84,3 +84,9 @@ type ReminderManager interface {
 	Delete(ctx context.Context, id string) error
 	Complete(ctx context.Context, id string) (*models.ReminderWithStatus, error)
 }
+
+type SalaryProfileManager interface {
+	Get(ctx context.Context, userID string) (*models.SalaryProfile, error)
+	Save(ctx context.Context, p *models.SalaryProfile) (*models.SalaryProfile, error)
+	CheckPurchase(ctx context.Context, p *models.SalaryProfile, price float64) (*models.PurchaseCheck, error)
+}

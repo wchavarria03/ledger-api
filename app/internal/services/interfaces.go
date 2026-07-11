@@ -99,3 +99,8 @@ type ReminderRepository interface {
 	Delete(ctx context.Context, id string) error
 	MarkCompleted(ctx context.Context, id string) error
 }
+
+type SalaryProfileRepository interface {
+	FindByUserID(ctx context.Context, userID string) (*models.SalaryProfile, error)
+	Upsert(ctx context.Context, p *models.SalaryProfile) (*models.SalaryProfile, error)
+}

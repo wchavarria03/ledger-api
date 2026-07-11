@@ -31,6 +31,7 @@ func setupRoutes(engine *gin.Engine, hdlrs *handlers.Registry, jwksURL string) {
 	setupReminderRoutes(v1, hdlrs)
 	setupCategoryRoutes(v1, hdlrs)
 	setupReportRoutes(v1, hdlrs)
+	setupSalaryProfileRoutes(v1, hdlrs)
 	v1.POST("/import", hdlrs.Upload.Import)
 	v1.POST("/transfers", hdlrs.Transfer.Create)
 	v1.POST("/transfers/link", hdlrs.Transfer.Link)
@@ -82,6 +83,12 @@ func setupAccountRoutes(rg *gin.RouterGroup, hdlrs *handlers.Registry) {
 func setupReportRoutes(rg *gin.RouterGroup, hdlrs *handlers.Registry) {
 	reports := rg.Group("/reports")
 	reports.GET("/summary", hdlrs.Report.GetSummary)
+}
+
+func setupSalaryProfileRoutes(rg *gin.RouterGroup, hdlrs *handlers.Registry) {
+	rg.GET("/salary-profile", hdlrs.SalaryProfile.Get)
+	rg.PUT("/salary-profile", hdlrs.SalaryProfile.Save)
+	rg.POST("/purchase-check", hdlrs.SalaryProfile.CheckPurchase)
 }
 
 func setupCategoryRoutes(rg *gin.RouterGroup, hdlrs *handlers.Registry) {

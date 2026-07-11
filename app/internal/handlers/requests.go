@@ -126,6 +126,16 @@ type updateReminderRequest struct {
 	Notes          string   `json:"notes"`
 }
 
+type saveSalaryProfileRequest struct {
+	NetSalary    float64 `json:"net_salary" binding:"required,gt=0"`
+	SalaryPeriod string  `json:"salary_period" binding:"required,oneof=monthly annual"`
+	HoursPerWeek float64 `json:"hours_per_week" binding:"required,gt=0"`
+}
+
+type purchaseCheckRequest struct {
+	Price float64 `json:"price" binding:"required,gt=0"`
+}
+
 type completeReminderRequest struct {
 	CreateTransfer bool    `json:"create_transfer"`
 	FromAccountID  string  `json:"from_account_id"`

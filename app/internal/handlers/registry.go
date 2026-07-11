@@ -17,6 +17,7 @@ type Registry struct {
 	Transaction   *TransactionHandler
 	Transfer      *TransferHandler
 	Upload        *UploadHandler
+	SalaryProfile *SalaryProfileHandler
 }
 
 func NewRegistry(svc *services.Registry) (*Registry, error) {
@@ -34,6 +35,7 @@ func NewRegistry(svc *services.Registry) (*Registry, error) {
 		Transaction:   NewTransactionHandler(svc.Transaction),
 		Transfer:      NewTransferHandler(svc.Transfer),
 		Upload:        NewUploadHandler(svc.Import),
+		SalaryProfile: NewSalaryProfileHandler(svc.SalaryProfile),
 	}, nil
 }
 

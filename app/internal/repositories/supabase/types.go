@@ -45,3 +45,7 @@ type EnvelopeRepository struct {
 type ReminderRepository struct {
 	client *databases.SupabaseClient
 }
+
+type SalaryProfileRepository struct {
+	client *databases.SupabaseClient
+}

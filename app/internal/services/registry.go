@@ -14,6 +14,7 @@ type Registry struct {
 	RuleExceptions AccountRuleExceptionRepository
 	Transaction    *TransactionService
 	Transfer       *TransferService
+	SalaryProfile  *SalaryProfileService
 }
 
 func NewRegistry(repos *repositories.Registry, userID string) *Registry {
@@ -31,5 +32,6 @@ func NewRegistry(repos *repositories.Registry, userID string) *Registry {
 		RuleExceptions: repos.RuleExceptions,
 		Transaction:    NewTransactionService(repos.Transactions),
 		Transfer:       transfer,
+		SalaryProfile:  NewSalaryProfileService(repos.SalaryProfiles),
 	}
 }

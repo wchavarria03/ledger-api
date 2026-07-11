@@ -51,3 +51,7 @@ type ReminderHandler struct {
 	svc       ReminderManager
 	transfers TransferService
 }
+
+type SalaryProfileHandler struct {
+	svc SalaryProfileManager
+}
