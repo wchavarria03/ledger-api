@@ -322,7 +322,7 @@ func (s *TransferService) ReconcileForPeriod(ctx context.Context, from, to time.
 
 	linked := 0
 	for _, pair := range pairs {
-		// Skip tier-3 (amount + date only) — requires user confirmation.
+		// Skip tier-4 (amount + date only) — requires user confirmation.
 		if pair.confidence == models.MatchByAmountDate {
 			continue
 		}
@@ -419,7 +419,15 @@ func isTransferPair(a, b models.Transaction, shortA, shortB string) (models.Matc
 		return models.MatchByShortNumber, true
 	}
 
-	// Tier 3: same date + same currency + same absolute amount (opposite signs)
+	// Tier 3: same non-empty description + same currency + amounts net to zero.
+	// Catches internal bank movements (e.g. BAC Objetivos) where both sides share
+	// an identical description but carry no account-number cross-reference.
+	if a.Description != "" && a.Description == b.Description &&
+		a.Currency == b.Currency && a.Amount.Add(b.Amount).IsZero() {
+		return models.MatchByDescription, true
+	}
+
+	// Tier 4: same date + same currency + same absolute amount (opposite signs)
 	if a.Date.Equal(b.Date) && a.Currency == b.Currency && a.Amount.Add(b.Amount).IsZero() {
 		return models.MatchByAmountDate, true
 	}

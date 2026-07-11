@@ -11,6 +11,7 @@ type MatchConfidence string
 const (
 	MatchByReference   MatchConfidence = "reference"
 	MatchByShortNumber MatchConfidence = "short_number"
+	MatchByDescription MatchConfidence = "description"
 	MatchByAmountDate  MatchConfidence = "amount_date"
 )
 
