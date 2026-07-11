@@ -64,8 +64,8 @@ func (h *AccountHandler) Update(c *gin.Context) {
 		return
 	}
 	fields := map[string]any{}
-	if req.Alias != "" {
-		fields["alias"] = req.Alias
+	if req.Alias != nil {
+		fields["alias"] = *req.Alias
 	}
 	if req.Currency != "" {
 		fields["currency"] = req.Currency

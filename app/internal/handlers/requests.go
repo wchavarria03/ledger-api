@@ -10,10 +10,10 @@ type createAccountRequest struct {
 }
 
 type updateAccountRequest struct {
-	Alias    string `json:"alias"`
-	Currency string `json:"currency"`
-	Locked   *bool  `json:"locked"`
-	External *bool  `json:"external"`
+	Alias    *string `json:"alias"`
+	Currency string  `json:"currency"`
+	Locked   *bool   `json:"locked"`
+	External *bool   `json:"external"`
 }
 
 type createTransactionRequest struct {
