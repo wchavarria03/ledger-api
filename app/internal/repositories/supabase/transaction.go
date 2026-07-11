@@ -29,7 +29,7 @@ type transactionRow struct {
 	SourceFile  string          `json:"source_file,omitempty"`
 }
 
-// transactionRowFull is the read shape — includes embedded category join.
+// transactionRowFull is the read shape — includes embedded category and transfer joins.
 type transactionRowFull struct {
 	ID                    string            `json:"id,omitempty"`
 	AccountID             string            `json:"account_id"`
@@ -42,11 +42,18 @@ type transactionRowFull struct {
 	Balance               decimal.Decimal   `json:"balance"`
 	Currency              string            `json:"currency"`
 	TransferID            string            `json:"transfer_id,omitempty"`
+	Transfer              *transferEmbed    `json:"transfers,omitempty"`
 	TransactionCategories []txCategoryEmbed `json:"transaction_categories"`
 }
 
 type txCategoryEmbed struct {
 	Category *models.Category `json:"categories"`
+}
+
+// transferEmbed holds the two transaction IDs from the linked transfers row.
+type transferEmbed struct {
+	FromTxID string `json:"from_tx_id"`
+	ToTxID   string `json:"to_tx_id"`
 }
 
 func NewTransactionRepository(client *databases.SupabaseClient) *TransactionRepository {
@@ -225,7 +232,7 @@ func (r *TransactionRepository) ListFiltered(ctx context.Context, accountID stri
 	for k, v := range base {
 		dataParams[k] = v
 	}
-	dataParams.Set("select", "*,transaction_categories(categories(id,name,color,parent_id))")
+	dataParams.Set("select", "*,transaction_categories(categories(id,name,color,parent_id)),transfers!transfer_id(from_tx_id,to_tx_id)")
 	dataParams.Set("order", "date.desc")
 	dataParams.Set("limit", strconv.Itoa(limit))
 	dataParams.Set("offset", strconv.Itoa(offset))
@@ -234,6 +241,13 @@ func (r *TransactionRepository) ListFiltered(ctx context.Context, accountID stri
 	if err != nil {
 		return nil, 0, err
 	}
+
+	counterpartNames, err := r.resolveCounterpartNames(ctx, rows)
+	if err != nil {
+		// Non-fatal: degrade gracefully — transactions still load without counterpart names.
+		counterpartNames = map[string]string{}
+	}
+
 	txs := make([]*models.Transaction, len(rows))
 	for i, row := range rows {
 		date, _ := time.Parse("2006-01-02", row.Date)
@@ -244,21 +258,90 @@ func (r *TransactionRepository) ListFiltered(ctx context.Context, accountID stri
 			}
 		}
 		txs[i] = &models.Transaction{
-			ID:          row.ID,
-			AccountID:   row.AccountID,
-			Date:        date,
-			Reference:   row.Reference,
-			Code:        row.Code,
-			Type:        models.TransactionType(row.Type),
-			Description: row.Description,
-			Amount:      row.Amount,
-			Balance:     row.Balance,
-			Currency:    row.Currency,
-			TransferID:  row.TransferID,
-			Categories:  cats,
+			ID:                     row.ID,
+			AccountID:              row.AccountID,
+			Date:                   date,
+			Reference:              row.Reference,
+			Code:                   row.Code,
+			Type:                   models.TransactionType(row.Type),
+			Description:            row.Description,
+			Amount:                 row.Amount,
+			Balance:                row.Balance,
+			Currency:               row.Currency,
+			TransferID:             row.TransferID,
+			CounterpartAccountName: counterpartNames[row.ID],
+			Categories:             cats,
 		}
 	}
 	return txs, total, nil
+}
+
+// resolveCounterpartNames fetches the account name of the counterpart transaction
+// for every linked transfer row in the page. Returns a map of tx.ID → counterpart account name.
+func (r *TransactionRepository) resolveCounterpartNames(ctx context.Context, rows []*transactionRowFull) (map[string]string, error) {
+	// Map this tx's ID → counterpart tx ID for any linked transfers.
+	counterpartTxID := make(map[string]string) // this-tx-id → counterpart-tx-id
+	for _, row := range rows {
+		if row.Transfer == nil {
+			continue
+		}
+		if row.Transfer.FromTxID == row.ID {
+			counterpartTxID[row.ID] = row.Transfer.ToTxID
+		} else {
+			counterpartTxID[row.ID] = row.Transfer.FromTxID
+		}
+	}
+	if len(counterpartTxID) == 0 {
+		return map[string]string{}, nil
+	}
+
+	// Collect unique counterpart tx IDs.
+	cpIDs := make([]string, 0, len(counterpartTxID))
+	seen := make(map[string]bool)
+	for _, cpID := range counterpartTxID {
+		if !seen[cpID] {
+			cpIDs = append(cpIDs, cpID)
+			seen[cpID] = true
+		}
+	}
+
+	// Fetch counterpart transactions joined to their account.
+	type cpRow struct {
+		ID      string `json:"id"`
+		Account *struct {
+			Name  string `json:"name"`
+			Alias string `json:"alias"`
+		} `json:"accounts"`
+	}
+	cpRows, err := databases.Get[[]*cpRow](ctx, r.client, "/rest/v1/transactions", url.Values{
+		"id":     []string{"in.(" + strings.Join(cpIDs, ",") + ")"},
+		"select": []string{"id,accounts!account_id(name,alias)"},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Build counterpart-tx-id → account display name.
+	nameByTxID := make(map[string]string, len(cpRows))
+	for _, cp := range cpRows {
+		if cp.Account == nil {
+			continue
+		}
+		name := cp.Account.Alias
+		if name == "" {
+			name = cp.Account.Name
+		}
+		nameByTxID[cp.ID] = name
+	}
+
+	// Map this-tx-id → account name.
+	result := make(map[string]string, len(counterpartTxID))
+	for thisTxID, cpID := range counterpartTxID {
+		if name, ok := nameByTxID[cpID]; ok {
+			result[thisTxID] = name
+		}
+	}
+	return result, nil
 }
 
 func (r *TransactionRepository) GetByAccountIDsInRange(ctx context.Context, accountIDs []string, from, to time.Time) ([]*models.Transaction, error) {
