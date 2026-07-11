@@ -407,11 +407,15 @@ func isTransferPair(a, b models.Transaction, shortA, shortB string) (models.Matc
 		return models.MatchByReference, true
 	}
 
-	// Tier 2: TEF description contains counterpart's short number
-	if shortB != "" && strings.Contains(a.Description, shortB) {
+	// Tier 2: TEF description contains counterpart's short number AND amounts net to zero.
+	// The description check alone is not sufficient — the same short number can appear
+	// in unrelated transfers. Requiring amounts to cancel rules out false positives.
+	if shortB != "" && strings.Contains(a.Description, shortB) &&
+		a.Currency == b.Currency && a.Amount.Add(b.Amount).IsZero() {
 		return models.MatchByShortNumber, true
 	}
-	if shortA != "" && strings.Contains(b.Description, shortA) {
+	if shortA != "" && strings.Contains(b.Description, shortA) &&
+		a.Currency == b.Currency && a.Amount.Add(b.Amount).IsZero() {
 		return models.MatchByShortNumber, true
 	}
 
