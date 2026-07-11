@@ -419,11 +419,12 @@ func isTransferPair(a, b models.Transaction, shortA, shortB string) (models.Matc
 		return models.MatchByShortNumber, true
 	}
 
-	// Tier 3: same non-empty description + same currency + amounts net to zero.
+	// Tier 3: matching description + same currency + amounts net to zero.
 	// Catches internal bank movements (e.g. BAC Objetivos) where both sides share
-	// an identical description but carry no account-number cross-reference.
-	if a.Description != "" && a.Description == b.Description &&
-		a.Currency == b.Currency && a.Amount.Add(b.Amount).IsZero() {
+	// an identical (or prefix-truncated) description but carry no account-number
+	// cross-reference. One side may be shorter due to PDF column-width truncation.
+	if a.Currency == b.Currency && a.Amount.Add(b.Amount).IsZero() &&
+		descriptionMatches(a.Description, b.Description) {
 		return models.MatchByDescription, true
 	}
 
@@ -433,4 +434,26 @@ func isTransferPair(a, b models.Transaction, shortA, shortB string) (models.Matc
 	}
 
 	return "", false
+}
+
+// descriptionMatches returns true when two descriptions are the same or one is
+// a prefix of the other. The prefix check handles PDF truncation where a bank
+// statement cuts a long description a few characters short (e.g.
+// "BAC Objetivos Mante Carro" vs "BAC Objetivos Mante Car"). A minimum shared
+// length of 8 characters prevents very short strings from producing false positives.
+func descriptionMatches(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	if a == b {
+		return true
+	}
+	minLen := len(a)
+	if len(b) < minLen {
+		minLen = len(b)
+	}
+	if minLen < 8 {
+		return false
+	}
+	return strings.HasPrefix(a, b) || strings.HasPrefix(b, a)
 }
