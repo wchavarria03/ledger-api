@@ -35,7 +35,7 @@ type ReportSummarizer interface {
 }
 
 type TransferService interface {
-	MatchForPeriod(ctx context.Context, from, to time.Time) ([]models.TransferMatch, error)
+	MatchForPeriod(ctx context.Context, from, to time.Time, fxMin, fxMax *float64) ([]models.TransferMatch, error)
 	CreateTransfer(ctx context.Context, input models.TransferInput) (*models.TransferResult, error)
 	LinkTransactions(ctx context.Context, fromTxID, toTxID string) (*models.TransferResult, error)
 }

@@ -13,6 +13,7 @@ const (
 	MatchByShortNumber MatchConfidence = "short_number"
 	MatchByDescription MatchConfidence = "description"
 	MatchByAmountDate  MatchConfidence = "amount_date"
+	MatchByFXRate      MatchConfidence = "fx_rate"
 )
 
 type TransferMatch struct {

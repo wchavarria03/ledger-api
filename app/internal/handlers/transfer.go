@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -96,7 +97,22 @@ func (h *TransferHandler) GetMatches(c *gin.Context) {
 		return
 	}
 
-	matches, err := h.svc.MatchForPeriod(c.Request.Context(), from, to)
+	var fxMin, fxMax *float64
+	if minStr, maxStr := c.Query("fx_min"), c.Query("fx_max"); minStr != "" && maxStr != "" {
+		min, err := strconv.ParseFloat(minStr, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid fx_min"})
+			return
+		}
+		max, err := strconv.ParseFloat(maxStr, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid fx_max"})
+			return
+		}
+		fxMin, fxMax = &min, &max
+	}
+
+	matches, err := h.svc.MatchForPeriod(c.Request.Context(), from, to, fxMin, fxMax)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to match transfers"})
 		return

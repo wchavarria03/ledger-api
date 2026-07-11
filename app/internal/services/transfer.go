@@ -204,9 +204,20 @@ func (s *TransferService) LinkTransactions(ctx context.Context, fromTxID, toTxID
 	}, nil
 }
 
+// fxRange bounds a plausible exchange rate for the weak cross-currency
+// suggestion tier. Both rateAB (b amount / a amount) and rateBA (its inverse)
+// are checked against it, so callers don't need to know which side of the
+// pair is the "base" currency.
+type fxRange struct {
+	min, max float64
+}
+
 // MatchForPeriod fetches all accounts and their transactions in the given date
 // range, runs the transfer matching algorithm, and returns the matched pairs.
-func (s *TransferService) MatchForPeriod(ctx context.Context, from, to time.Time) ([]models.TransferMatch, error) {
+// fxMin/fxMax optionally enable the fx_rate suggestion tier for cross-currency
+// pairs (e.g. an informal currency exchange) whose implied rate falls in
+// [fxMin, fxMax]; pass nil for either to disable it.
+func (s *TransferService) MatchForPeriod(ctx context.Context, from, to time.Time, fxMin, fxMax *float64) ([]models.TransferMatch, error) {
 	accounts, err := s.accounts.FindAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list accounts: %w", err)
@@ -242,7 +253,11 @@ func (s *TransferService) MatchForPeriod(ctx context.Context, from, to time.Time
 		})
 	}
 
-	pairs := s.Match(stmts)
+	var fxr *fxRange
+	if fxMin != nil && fxMax != nil {
+		fxr = &fxRange{min: *fxMin, max: *fxMax}
+	}
+	pairs := s.Match(stmts, fxr)
 
 	// Flatten all transactions for index lookup (same iteration order as Match).
 	var flat []models.Transaction
@@ -325,7 +340,7 @@ func (s *TransferService) ReconcileForPeriod(ctx context.Context, from, to time.
 		return 0, nil
 	}
 
-	pairs := s.Match(stmts)
+	pairs := s.Match(stmts, nil)
 
 	// Flatten in the same iteration order Match() used, so indices align.
 	var flat []models.Transaction
@@ -335,8 +350,8 @@ func (s *TransferService) ReconcileForPeriod(ctx context.Context, from, to time.
 
 	linked := 0
 	for _, pair := range pairs {
-		// Skip tier-4 (amount + date only) — requires user confirmation.
-		if pair.confidence == models.MatchByAmountDate {
+		// Skip the weakest tiers — they require user confirmation.
+		if pair.confidence == models.MatchByAmountDate || pair.confidence == models.MatchByFXRate {
 			continue
 		}
 		if pair.a >= len(flat) || pair.b >= len(flat) {
@@ -365,14 +380,17 @@ type matchPair struct {
 	confidence models.MatchConfidence
 }
 
-// Match identifies transfer pairs across statements using a 3-tier priority:
+// Match identifies transfer pairs across statements using a priority order:
 //  1. Same Reference across accounts (strongest)
 //  2. Description contains counterpart's ShortNumber (TEF A/DE patterns)
-//  3. Same date + same absolute amount + same currency (weakest, needs user confirmation)
+//  3. Matching (or truncated-prefix) description, same currency
+//  4. Same date + same absolute amount + same currency (weak, needs user confirmation)
+//  5. Cross-currency pair whose implied rate falls in fxr, if provided (weak,
+//     needs user confirmation) — e.g. an informal currency exchange
 //
 // Returns pairs of (a, b) indices into the flattened transaction list, with
 // the confidence tier that produced the match.
-func (s *TransferService) Match(statements []*models.Statement) []matchPair {
+func (s *TransferService) Match(statements []*models.Statement, fxr *fxRange) []matchPair {
 	type indexed struct {
 		stmtIdx int
 		txIdx   int
@@ -402,7 +420,7 @@ func (s *TransferService) Match(statements []*models.Statement) []matchPair {
 			if j <= i || matched[j] || a.stmtIdx == b.stmtIdx {
 				continue
 			}
-			if confidence, ok := isTransferPair(a.tx, b.tx, shortNumbers[a.stmtIdx], shortNumbers[b.stmtIdx]); ok {
+			if confidence, ok := isTransferPair(a.tx, b.tx, shortNumbers[a.stmtIdx], shortNumbers[b.stmtIdx], fxr); ok {
 				matched[i] = true
 				matched[j] = true
 				pairs = append(pairs, matchPair{a: i, b: j, confidence: confidence})
@@ -414,7 +432,13 @@ func (s *TransferService) Match(statements []*models.Statement) []matchPair {
 	return pairs
 }
 
-func isTransferPair(a, b models.Transaction, shortA, shortB string) (models.MatchConfidence, bool) {
+func isTransferPair(a, b models.Transaction, shortA, shortB string, fxr *fxRange) (models.MatchConfidence, bool) {
+	// Cross-currency pairs can only match on implied exchange rate — none of
+	// the same-currency tiers below are meaningful across currencies.
+	if a.Currency != b.Currency {
+		return matchFXRate(a, b, fxr)
+	}
+
 	// Tier 1: same non-empty reference
 	if a.Reference != "" && a.Reference == b.Reference {
 		return models.MatchByReference, true
@@ -446,6 +470,31 @@ func isTransferPair(a, b models.Transaction, shortA, shortB string) (models.Matc
 		return models.MatchByAmountDate, true
 	}
 
+	return "", false
+}
+
+// matchFXRate matches two opposite-sign, opposite-currency transactions on
+// the same date whose implied exchange rate falls within fxr. Checked in
+// both directions (b/a and a/b) so callers don't need to know which side is
+// the "base" currency for the range they supplied.
+func matchFXRate(a, b models.Transaction, fxr *fxRange) (models.MatchConfidence, bool) {
+	if fxr == nil {
+		return "", false
+	}
+	if a.Amount.IsZero() || b.Amount.IsZero() || a.Amount.Sign() == b.Amount.Sign() {
+		return "", false
+	}
+	if !a.Date.Equal(b.Date) {
+		return "", false
+	}
+
+	aAbs, bAbs := a.Amount.Abs(), b.Amount.Abs()
+	rateBA, _ := bAbs.Div(aAbs).Float64()
+	rateAB, _ := aAbs.Div(bAbs).Float64()
+
+	if (rateBA >= fxr.min && rateBA <= fxr.max) || (rateAB >= fxr.min && rateAB <= fxr.max) {
+		return models.MatchByFXRate, true
+	}
 	return "", false
 }
 
