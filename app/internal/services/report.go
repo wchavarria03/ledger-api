@@ -78,7 +78,7 @@ func (s *ReportService) Summarize(ctx context.Context, accountIDs []string, from
 			absAmount := math.Abs(amount) // expenses are stored as negatives; normalise to positive
 			summary.TotalExpenses += absAmount
 			dailyExpenses[day] += absAmount
-			if root := resolveRootCategory(tx.Categories, catByID); root != nil {
+			for _, root := range resolveRootCategories(tx.Categories, catByID) {
 				if _, ok := categoryTotals[root.ID]; !ok {
 					categoryTotals[root.ID] = &models.CategorySpend{
 						CategoryID:   root.ID,
@@ -137,18 +137,26 @@ func (s *ReportService) Summarize(ctx context.Context, accountIDs []string, from
 	return summary, nil
 }
 
-// resolveRootCategory walks up one level to return the parent category.
-// Takes the first assigned category; if it has a parent, returns the parent.
-func resolveRootCategory(cats []*models.Category, catByID map[string]*models.Category) *models.Category {
-	if len(cats) == 0 {
-		return nil
+// resolveRootCategories walks each assigned category up one level to its
+// parent (root), de-duplicating so a transaction tagged with two children of
+// the same parent only counts once against that parent. A transaction with
+// multiple distinct roots contributes its full amount to each — spend totals
+// intentionally overlap rather than being split arbitrarily between tags.
+func resolveRootCategories(cats []*models.Category, catByID map[string]*models.Category) []*models.Category {
+	seen := make(map[string]*models.Category, len(cats))
+	for _, cat := range cats {
+		root := cat
+		if cat.ParentID != "" {
+			if parent, ok := catByID[cat.ParentID]; ok {
+				root = parent
+			}
+		}
+		seen[root.ID] = root
 	}
-	cat := cats[0]
-	if cat.ParentID == "" {
-		return cat
+
+	roots := make([]*models.Category, 0, len(seen))
+	for _, root := range seen {
+		roots = append(roots, root)
 	}
-	if parent, ok := catByID[cat.ParentID]; ok {
-		return parent
-	}
-	return cat
+	return roots
 }
