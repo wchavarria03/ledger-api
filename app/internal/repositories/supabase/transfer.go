@@ -3,6 +3,7 @@ package supabase
 import (
 	"context"
 	"fmt"
+	"net/url"
 
 	"ledger-api/app/internal/databases"
 	"ledger-api/app/internal/models"
@@ -46,4 +47,32 @@ func (r *TransferRepository) Create(ctx context.Context, fromTxID, toTxID string
 		ExchangeRate:   res.ExchangeRate,
 		ExchangeSource: res.ExchangeSource,
 	}, nil
+}
+
+// GetByID looks up a transfer row by ID.
+func (r *TransferRepository) GetByID(ctx context.Context, id string) (*models.Transfer, error) {
+	rows, err := databases.Get[[]*transferRow](ctx, r.client, "/rest/v1/transfers", url.Values{
+		"id":     []string{"eq." + id},
+		"limit":  []string{"1"},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) == 0 {
+		return nil, nil
+	}
+	row := rows[0]
+	return &models.Transfer{
+		ID:             row.ID,
+		FromTxID:       row.FromTxID,
+		ToTxID:         row.ToTxID,
+		ExchangeRate:   row.ExchangeRate,
+		ExchangeSource: row.ExchangeSource,
+	}, nil
+}
+
+// Delete removes a transfer link row, e.g. when a linked transaction is
+// corrected to no longer be a transfer.
+func (r *TransferRepository) Delete(ctx context.Context, id string) error {
+	return databases.Delete(ctx, r.client, "/rest/v1/transfers?id=eq."+id)
 }

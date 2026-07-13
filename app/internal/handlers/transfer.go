@@ -77,6 +77,31 @@ func (h *TransferHandler) Link(c *gin.Context) {
 	c.JSON(http.StatusCreated, result)
 }
 
+// UpdateTransactionType handles PATCH /v1/transactions/:id/type — corrects a
+// transaction's type after import, e.g. when the parser miscoded a payment
+// to an external party as a transfer. If the transaction was linked to a
+// transfer, the link is torn down as part of the update.
+func (h *TransferHandler) UpdateTransactionType(c *gin.Context) {
+	txID := c.Param("id")
+	var req updateTransactionTypeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	tx, err := h.svc.UpdateTransactionType(c.Request.Context(), txID, models.TransactionType(req.Type))
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+	if tx == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "transaction not found"})
+		return
+	}
+
+	c.JSON(http.StatusOK, tx)
+}
+
 func (h *TransferHandler) GetMatches(c *gin.Context) {
 	fromStr := c.Query("from")
 	toStr := c.Query("to")

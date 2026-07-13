@@ -29,12 +29,16 @@ type TransactionRepository interface {
 	FindMatchingPattern(ctx context.Context, pattern, accountID string) ([]*models.Transaction, error)
 	Delete(ctx context.Context, id string) error
 	SetTransferID(ctx context.Context, txID, transferID string) error
+	ClearTransferID(ctx context.Context, txID string) error
+	UpdateType(ctx context.Context, txID string, txType models.TransactionType) error
 }
 
 // TransferRepository persists the link row connecting two transactions
 // that represent the same money moving between accounts.
 type TransferRepository interface {
 	Create(ctx context.Context, fromTxID, toTxID string, exchangeRate *float64, exchangeSource string) (*models.Transfer, error)
+	GetByID(ctx context.Context, id string) (*models.Transfer, error)
+	Delete(ctx context.Context, id string) error
 }
 
 type ClassificationRuleRepository interface {

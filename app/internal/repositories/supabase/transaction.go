@@ -472,6 +472,26 @@ func (r *TransactionRepository) SetTransferID(ctx context.Context, txID, transfe
 	return err
 }
 
+// ClearTransferID removes a transaction's link to a transfer, e.g. when the
+// user corrects a misclassified transaction that isn't actually a transfer.
+func (r *TransactionRepository) ClearTransferID(ctx context.Context, txID string) error {
+	_, err := databases.Patch[struct{}](ctx, r.client,
+		"/rest/v1/transactions?id=eq."+txID,
+		map[string]any{"transfer_id": nil},
+		"return=minimal")
+	return err
+}
+
+// UpdateType changes a transaction's type (expense/income/transfer), e.g.
+// to fix a misclassification found after import.
+func (r *TransactionRepository) UpdateType(ctx context.Context, txID string, txType models.TransactionType) error {
+	_, err := databases.Patch[struct{}](ctx, r.client,
+		"/rest/v1/transactions?id=eq."+txID,
+		map[string]any{"type": string(txType)},
+		"return=minimal")
+	return err
+}
+
 // FindMatchingPattern returns transactions whose description matches the given pattern (case-insensitive).
 // If accountID is non-empty, results are scoped to that account.
 func (r *TransactionRepository) FindMatchingPattern(ctx context.Context, pattern, accountID string) ([]*models.Transaction, error) {

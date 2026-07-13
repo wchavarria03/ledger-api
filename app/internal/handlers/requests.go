@@ -61,6 +61,10 @@ type linkTransferRequest struct {
 	ToTxID   string `json:"to_tx_id" binding:"required"`
 }
 
+type updateTransactionTypeRequest struct {
+	Type string `json:"type" binding:"required,oneof=expense income transfer"`
+}
+
 type createBudgetRequest struct {
 	CategoryID string  `json:"category_id" binding:"required"`
 	Currency   string  `json:"currency" binding:"required"`

@@ -36,6 +36,7 @@ func setupRoutes(engine *gin.Engine, hdlrs *handlers.Registry, jwksURL string) {
 	v1.POST("/transfers", hdlrs.Transfer.Create)
 	v1.POST("/transfers/link", hdlrs.Transfer.Link)
 	v1.GET("/transfers/matches", hdlrs.Transfer.GetMatches)
+	v1.PATCH("/transactions/:id/type", hdlrs.Transfer.UpdateTransactionType)
 }
 
 func setupEnvelopeRoutes(rg *gin.RouterGroup, hdlrs *handlers.Registry) {

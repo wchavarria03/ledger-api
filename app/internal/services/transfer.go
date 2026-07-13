@@ -204,6 +204,57 @@ func (s *TransferService) LinkTransactions(ctx context.Context, fromTxID, toTxID
 	}, nil
 }
 
+// UpdateTransactionType corrects a transaction's type after import (e.g. a
+// payment to an external party that the bank/parser miscoded as a transfer).
+// If the transaction is linked to a transfer and the new type is no longer
+// "transfer", the link is torn down: the transfer row is deleted and both
+// legs' transfer_id are cleared, freeing the counterpart leg for re-matching.
+func (s *TransferService) UpdateTransactionType(ctx context.Context, txID string, newType models.TransactionType) (*models.Transaction, error) {
+	switch newType {
+	case models.TypeExpense, models.TypeIncome, models.TypeTransfer:
+	default:
+		return nil, fmt.Errorf("type must be expense, income, or transfer")
+	}
+
+	tx, err := s.transactions.GetByID(ctx, txID)
+	if err != nil {
+		return nil, fmt.Errorf("lookup transaction: %w", err)
+	}
+	if tx == nil {
+		return nil, nil
+	}
+
+	if tx.TransferID != "" && newType != models.TypeTransfer {
+		transfer, err := s.transfers.GetByID(ctx, tx.TransferID)
+		if err != nil {
+			return nil, fmt.Errorf("lookup transfer: %w", err)
+		}
+		if transfer != nil {
+			counterpartID := transfer.ToTxID
+			if counterpartID == txID {
+				counterpartID = transfer.FromTxID
+			}
+			if err := s.transfers.Delete(ctx, transfer.ID); err != nil {
+				return nil, fmt.Errorf("delete transfer link: %w", err)
+			}
+			if err := s.transactions.ClearTransferID(ctx, counterpartID); err != nil {
+				return nil, fmt.Errorf("unlink counterpart transaction: %w", err)
+			}
+			if err := s.transactions.ClearTransferID(ctx, txID); err != nil {
+				return nil, fmt.Errorf("unlink transaction: %w", err)
+			}
+			tx.TransferID = ""
+		}
+	}
+
+	if err := s.transactions.UpdateType(ctx, txID, newType); err != nil {
+		return nil, fmt.Errorf("update transaction type: %w", err)
+	}
+	tx.Type = newType
+
+	return tx, nil
+}
+
 // fxRange bounds a plausible exchange rate for the weak cross-currency
 // suggestion tier. Both rateAB (b amount / a amount) and rateBA (its inverse)
 // are checked against it, so callers don't need to know which side of the
