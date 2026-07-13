@@ -61,6 +61,11 @@ type linkTransferRequest struct {
 	ToTxID   string `json:"to_tx_id" binding:"required"`
 }
 
+type linkExistingTransferRequest struct {
+	TransactionID        string `json:"transaction_id" binding:"required"`
+	CounterpartAccountID string `json:"counterpart_account_id" binding:"required"`
+}
+
 type updateTransactionTypeRequest struct {
 	Type string `json:"type" binding:"required,oneof=expense income transfer"`
 }
@@ -76,7 +81,7 @@ type updateBudgetRequest struct {
 }
 
 type acknowledgeBudgetRequest struct {
-	Month         string  `json:"month" binding:"required"` // YYYY-MM
+	Month         string  `json:"month" binding:"required"`  // YYYY-MM
 	Action        string  `json:"action" binding:"required"` // kept | moved
 	FromAccountID string  `json:"from_account_id"`
 	ToAccountID   string  `json:"to_account_id"`
@@ -91,7 +96,7 @@ type createEnvelopeRequest struct {
 	Currency             string   `json:"currency" binding:"required"`
 	TargetAmount         *float64 `json:"target_amount"`
 	RecurringAmount      *float64 `json:"recurring_amount"`
-	RecurrenceType       string   `json:"recurrence_type"` // monthly | biweekly
+	RecurrenceType       string   `json:"recurrence_type"`        // monthly | biweekly
 	NextContributionDate string   `json:"next_contribution_date"` // YYYY-MM-DD
 }
 

@@ -18,6 +18,7 @@ type AccountLister interface {
 	GetByID(ctx context.Context, id string) (*models.Account, error)
 	Create(ctx context.Context, a *models.Account) (*models.Account, error)
 	Update(ctx context.Context, id string, fields map[string]any) (*models.Account, error)
+	Delete(ctx context.Context, id string) error
 }
 
 type TransactionLister interface {
@@ -38,6 +39,7 @@ type TransferService interface {
 	MatchForPeriod(ctx context.Context, from, to time.Time, fxMin, fxMax *float64) ([]models.TransferMatch, error)
 	CreateTransfer(ctx context.Context, input models.TransferInput) (*models.TransferResult, error)
 	LinkTransactions(ctx context.Context, fromTxID, toTxID string) (*models.TransferResult, error)
+	LinkExisting(ctx context.Context, existingTxID, counterpartAccountID string) (*models.TransferResult, error)
 	UpdateTransactionType(ctx context.Context, txID string, newType models.TransactionType) (*models.Transaction, error)
 }
 

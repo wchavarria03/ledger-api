@@ -255,6 +255,78 @@ func (s *TransferService) UpdateTransactionType(ctx context.Context, txID string
 	return tx, nil
 }
 
+// LinkExisting links an already-imported transaction to a counterpart
+// account by creating the missing leg automatically: same date, same
+// currency, negated amount. This covers cases like recording a loan where
+// the outgoing payment was already imported from a bank statement, but the
+// counterpart (e.g. a borrower's external account) has no matching row yet.
+// The existing transaction is also reclassified to "transfer", since linking
+// it confirms that's what it actually is.
+func (s *TransferService) LinkExisting(ctx context.Context, existingTxID, counterpartAccountID string) (*models.TransferResult, error) {
+	if existingTxID == "" || counterpartAccountID == "" {
+		return nil, fmt.Errorf("transaction_id and counterpart_account_id are required")
+	}
+
+	existingTx, err := s.transactions.GetByID(ctx, existingTxID)
+	if err != nil {
+		return nil, fmt.Errorf("lookup transaction: %w", err)
+	}
+	if existingTx == nil {
+		return nil, ErrFromTxNotFound
+	}
+	if existingTx.TransferID != "" {
+		return nil, ErrFromTxLinked
+	}
+	if existingTx.AccountID == counterpartAccountID {
+		return nil, fmt.Errorf("counterpart_account_id must be different from the transaction's account")
+	}
+
+	counterpartAccount, err := s.accounts.FindByID(ctx, counterpartAccountID)
+	if err != nil {
+		return nil, fmt.Errorf("lookup counterpart account: %w", err)
+	}
+	if counterpartAccount == nil {
+		return nil, fmt.Errorf("counterpart account not found")
+	}
+
+	counterpartTx, err := s.transactions.Create(ctx, &models.Transaction{
+		AccountID:   counterpartAccountID,
+		Date:        existingTx.Date,
+		Description: existingTx.Description,
+		Amount:      existingTx.Amount.Neg(),
+		Type:        models.TypeTransfer,
+		Currency:    existingTx.Currency,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create counterpart transaction: %w", err)
+	}
+
+	if err := s.transactions.UpdateType(ctx, existingTxID, models.TypeTransfer); err != nil {
+		return nil, fmt.Errorf("reclassify transaction: %w", err)
+	}
+
+	transfer, err := s.transfers.Create(ctx, existingTxID, counterpartTx.ID, nil, "manual")
+	if err != nil {
+		return nil, fmt.Errorf("link transfer: %w", err)
+	}
+
+	if err := s.transactions.SetTransferID(ctx, existingTxID, transfer.ID); err != nil {
+		return nil, fmt.Errorf("link existing transaction: %w", err)
+	}
+	if err := s.transactions.SetTransferID(ctx, counterpartTx.ID, transfer.ID); err != nil {
+		return nil, fmt.Errorf("link counterpart transaction: %w", err)
+	}
+	existingTx.TransferID = transfer.ID
+	existingTx.Type = models.TypeTransfer
+	counterpartTx.TransferID = transfer.ID
+
+	return &models.TransferResult{
+		Transfer:        *transfer,
+		FromTransaction: *existingTx,
+		ToTransaction:   *counterpartTx,
+	}, nil
+}
+
 // fxRange bounds a plausible exchange rate for the weak cross-currency
 // suggestion tier. Both rateAB (b amount / a amount) and rateBA (its inverse)
 // are checked against it, so callers don't need to know which side of the

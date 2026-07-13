@@ -35,6 +35,7 @@ func setupRoutes(engine *gin.Engine, hdlrs *handlers.Registry, jwksURL string) {
 	v1.POST("/import", hdlrs.Upload.Import)
 	v1.POST("/transfers", hdlrs.Transfer.Create)
 	v1.POST("/transfers/link", hdlrs.Transfer.Link)
+	v1.POST("/transfers/link-existing", hdlrs.Transfer.LinkExisting)
 	v1.GET("/transfers/matches", hdlrs.Transfer.GetMatches)
 	v1.PATCH("/transactions/:id/type", hdlrs.Transfer.UpdateTransactionType)
 }
@@ -73,6 +74,7 @@ func setupAccountRoutes(rg *gin.RouterGroup, hdlrs *handlers.Registry) {
 	accounts.POST("", hdlrs.Account.Create)
 	accounts.GET("/:id", hdlrs.Account.Get)
 	accounts.PATCH("/:id", hdlrs.Account.Update)
+	accounts.DELETE("/:id", hdlrs.Account.Delete)
 	accounts.GET("/:id/transactions", hdlrs.Transaction.ListByAccount)
 	accounts.POST("/:id/transactions", hdlrs.Transaction.Create)
 	accounts.GET("/:id/envelopes", hdlrs.Envelope.ListByAccount)

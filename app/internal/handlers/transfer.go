@@ -102,6 +102,34 @@ func (h *TransferHandler) UpdateTransactionType(c *gin.Context) {
 	c.JSON(http.StatusOK, tx)
 }
 
+// LinkExisting handles POST /v1/transfers/link-existing — links an
+// already-imported transaction to a counterpart account by creating the
+// missing leg automatically (e.g. recording a loan when the outgoing
+// payment is already in a bank statement but the borrower's account has no
+// matching row yet).
+func (h *TransferHandler) LinkExisting(c *gin.Context) {
+	var req linkExistingTransferRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	result, err := h.svc.LinkExisting(c.Request.Context(), req.TransactionID, req.CounterpartAccountID)
+	if err != nil {
+		switch {
+		case errors.Is(err, services.ErrFromTxNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		case errors.Is(err, services.ErrFromTxLinked):
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+		default:
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		}
+		return
+	}
+
+	c.JSON(http.StatusCreated, result)
+}
+
 func (h *TransferHandler) GetMatches(c *gin.Context) {
 	fromStr := c.Query("from")
 	toStr := c.Query("to")

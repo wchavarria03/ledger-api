@@ -60,6 +60,13 @@ func (r *AccountRepository) Update(ctx context.Context, id string, fields map[st
 	return results[0], nil
 }
 
+// Delete removes an account. Callers are expected to have already verified
+// there's no transaction history on it — the API layer blocks deletes on
+// accounts with transactions rather than cascading.
+func (r *AccountRepository) Delete(ctx context.Context, id string) error {
+	return databases.Delete(ctx, r.client, "/rest/v1/accounts?id=eq."+id)
+}
+
 func (r *AccountRepository) Upsert(ctx context.Context, a *models.Account) (*models.Account, error) {
 	results, err := databases.Post[[]*models.Account](ctx, r.client, "/rest/v1/accounts", a,
 		"resolution=merge-duplicates,return=representation")

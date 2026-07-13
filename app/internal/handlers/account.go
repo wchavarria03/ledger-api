@@ -92,6 +92,14 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, account)
 }
 
+func (h *AccountHandler) Delete(c *gin.Context) {
+	if err := h.svc.Delete(c.Request.Context(), c.Param("id")); err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 func (h *AccountHandler) Get(c *gin.Context) {
 	account, err := h.svc.GetByID(c.Request.Context(), c.Param("id"))
 	if err != nil {
