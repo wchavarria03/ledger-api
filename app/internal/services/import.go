@@ -17,6 +17,7 @@ func NewImportService(
 	txCategories TransactionCategoryRepository,
 	ruleExceptions AccountRuleExceptionRepository,
 	transferSvc *TransferService,
+	reminderSvc *ReminderService,
 	userID string,
 ) *ImportService {
 	return &ImportService{
@@ -27,17 +28,18 @@ func NewImportService(
 		txCategories:   txCategories,
 		ruleExceptions: ruleExceptions,
 		transferSvc:    transferSvc,
+		reminderSvc:    reminderSvc,
 		userID:         userID,
 	}
 }
 
 func (s *ImportService) Import(ctx context.Context, stmt *models.Statement, bankName string) error {
-	_, _, _, err := s.doImport(ctx, stmt, bankName, nil)
+	_, _, _, _, err := s.doImport(ctx, stmt, bankName, nil)
 	return err
 }
 
 func (s *ImportService) ImportWithSummary(ctx context.Context, stmt *models.Statement, bankName string, catOverrides map[int][]string) (*models.ImportSummary, error) {
-	acc, linked, isNew, err := s.doImport(ctx, stmt, bankName, catOverrides)
+	acc, linked, isNew, reminderMatches, err := s.doImport(ctx, stmt, bankName, catOverrides)
 	if err != nil {
 		return nil, err
 	}
@@ -53,6 +55,7 @@ func (s *ImportService) ImportWithSummary(ctx context.Context, stmt *models.Stat
 		Bank:                 bank,
 		ImportedCount:        len(stmt.Transactions),
 		LinkedTransfersCount: linked,
+		ReminderMatches:      reminderMatches,
 	}, nil
 }
 
@@ -80,7 +83,7 @@ func (s *ImportService) CheckOverlap(ctx context.Context, stmt *models.Statement
 	return len(existing), nil
 }
 
-func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, bankName string, catOverrides map[int][]string) (*models.Account, int, bool, error) {
+func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, bankName string, catOverrides map[int][]string) (*models.Account, int, bool, []models.ReminderMatch, error) {
 	bank := bankName
 	if idx := strings.Index(bankName, "/"); idx != -1 {
 		bank = bankName[:idx]
@@ -94,7 +97,7 @@ func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, ba
 
 	acc, err := s.accounts.FindByAccountNumber(ctx, stmt.AccountNumber)
 	if err != nil {
-		return nil, 0, false, fmt.Errorf("lookup account: %w", err)
+		return nil, 0, false, nil, fmt.Errorf("lookup account: %w", err)
 	}
 
 	isNew := acc == nil
@@ -118,17 +121,17 @@ func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, ba
 			UserID:        userID,
 		})
 		if err != nil {
-			return nil, 0, false, fmt.Errorf("upsert account: %w", err)
+			return nil, 0, false, nil, fmt.Errorf("upsert account: %w", err)
 		}
 	}
 
 	txs, err := s.classifier.Apply(ctx, bank, stmt.Transactions)
 	if err != nil {
-		return nil, 0, false, fmt.Errorf("classify transactions: %w", err)
+		return nil, 0, false, nil, fmt.Errorf("classify transactions: %w", err)
 	}
 
 	if err := s.transactions.UpsertBatch(ctx, acc.ID, stmt.SourceFile, txs); err != nil {
-		return nil, 0, false, fmt.Errorf("upsert transactions: %w", err)
+		return nil, 0, false, nil, fmt.Errorf("upsert transactions: %w", err)
 	}
 
 	// Apply user-supplied category overrides before auto-categorization so
@@ -145,7 +148,32 @@ func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, ba
 	// Errors here are non-fatal — same best-effort pattern as autoCategorize.
 	linked := s.autoReconcile(ctx, stmt)
 
-	return acc, linked, isNew, nil
+	// Surface candidate matches between resolved-but-unconfirmed reminders and
+	// the newly imported transactions, for the user to confirm. Best-effort —
+	// same pattern as autoCategorize/autoReconcile.
+	reminderMatches := s.matchReminders(ctx, acc.ID, stmt)
+
+	return acc, linked, isNew, reminderMatches, nil
+}
+
+// matchReminders looks up transactions imported in this statement's date
+// range and checks them against resolved-but-unconfirmed reminders on the
+// same account.
+func (s *ImportService) matchReminders(ctx context.Context, accountID string, stmt *models.Statement) []models.ReminderMatch {
+	if s.reminderSvc == nil || len(stmt.Transactions) == 0 {
+		return nil
+	}
+	from := stmt.Transactions[0].Date
+	to := stmt.Transactions[len(stmt.Transactions)-1].Date
+	stored, err := s.transactions.GetByAccountIDsInRange(ctx, []string{accountID}, from, to)
+	if err != nil {
+		return nil
+	}
+	matches, err := s.reminderSvc.MatchCandidates(ctx, accountID, stored)
+	if err != nil {
+		return nil
+	}
+	return matches
 }
 
 // autoReconcile runs transfer reconciliation across all accounts for the

@@ -8,6 +8,7 @@ type ImportService struct {
 	txCategories   TransactionCategoryRepository
 	ruleExceptions AccountRuleExceptionRepository
 	transferSvc    *TransferService
+	reminderSvc    *ReminderService
 	userID         string
 }
 

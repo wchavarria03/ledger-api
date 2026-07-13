@@ -64,6 +64,7 @@ func setupReminderRoutes(rg *gin.RouterGroup, hdlrs *handlers.Registry) {
 	reminders.PATCH("/:id", hdlrs.Reminder.Update)
 	reminders.DELETE("/:id", hdlrs.Reminder.Delete)
 	reminders.POST("/:id/complete", hdlrs.Reminder.Complete)
+	reminders.POST("/:id/link", hdlrs.Reminder.Link)
 }
 
 func setupAccountRoutes(rg *gin.RouterGroup, hdlrs *handlers.Registry) {

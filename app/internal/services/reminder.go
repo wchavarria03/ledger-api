@@ -101,8 +101,97 @@ func (s *ReminderService) Complete(ctx context.Context, id string) (*models.Remi
 			RecurrenceType: reminder.RecurrenceType,
 			Notes:          reminder.Notes,
 		}
-		if _, err := s.reminders.Create(ctx, nextInput); err != nil {
+		next, err := s.reminders.Create(ctx, nextInput)
+		if err != nil {
 			return nil, fmt.Errorf("create next occurrence: %w", err)
+		}
+		if next != nil {
+			if _, err := s.reminders.Update(ctx, id, map[string]any{"next_reminder_id": next.ID}); err != nil {
+				return nil, fmt.Errorf("link next occurrence: %w", err)
+			}
+		}
+	}
+
+	updated, err := s.reminders.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if updated == nil {
+		return nil, nil
+	}
+	return toReminderWithStatus(updated), nil
+}
+
+// reminderMatchWindow bounds how far a transaction's date may be from a
+// reminder's due_date to still be considered a candidate match.
+const reminderMatchWindow = 10 * 24 * time.Hour
+
+// MatchCandidates finds resolved-but-unconfirmed reminders on accountID whose
+// amount and currency exactly match one of txs and whose due_date falls
+// within reminderMatchWindow of the transaction's date. Returned candidates
+// are surfaced to the user for confirmation — nothing is linked here.
+func (s *ReminderService) MatchCandidates(ctx context.Context, accountID string, txs []*models.Transaction) ([]models.ReminderMatch, error) {
+	reminders, err := s.reminders.ListByAccountID(ctx, accountID)
+	if err != nil {
+		return nil, fmt.Errorf("list reminders: %w", err)
+	}
+
+	var matches []models.ReminderMatch
+	for _, r := range reminders {
+		if r.CompletedAt == nil || r.TransactionID != nil || r.Amount == nil {
+			continue
+		}
+		dueDate, err := time.Parse("2006-01-02", r.DueDate)
+		if err != nil {
+			continue
+		}
+		for _, tx := range txs {
+			if r.Currency != nil && *r.Currency != tx.Currency {
+				continue
+			}
+			if !tx.Amount.Abs().Equal(r.Amount.Abs()) {
+				continue
+			}
+			diff := tx.Date.Sub(dueDate)
+			if diff < 0 {
+				diff = -diff
+			}
+			if diff > reminderMatchWindow {
+				continue
+			}
+			matches = append(matches, models.ReminderMatch{
+				Reminder:    *toReminderWithStatus(r),
+				Transaction: *tx,
+			})
+		}
+	}
+	return matches, nil
+}
+
+// Link confirms a resolved reminder by attaching the real transaction that
+// paid it. If nextDueDate is set and the reminder has a next occurrence
+// (created automatically at resolve time), that occurrence's due_date is
+// updated too — for recurrences that shift based on the actual pay date
+// rather than a fixed day.
+func (s *ReminderService) Link(ctx context.Context, id, transactionID, nextDueDate string) (*models.ReminderWithStatus, error) {
+	if transactionID == "" {
+		return nil, fmt.Errorf("transaction_id is required")
+	}
+	reminder, err := s.reminders.FindByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("find reminder: %w", err)
+	}
+	if reminder == nil {
+		return nil, nil
+	}
+
+	if _, err := s.reminders.Update(ctx, id, map[string]any{"transaction_id": transactionID}); err != nil {
+		return nil, fmt.Errorf("link transaction: %w", err)
+	}
+
+	if nextDueDate != "" && reminder.NextReminderID != nil {
+		if _, err := s.reminders.Update(ctx, *reminder.NextReminderID, map[string]any{"due_date": nextDueDate}); err != nil {
+			return nil, fmt.Errorf("update next occurrence due date: %w", err)
 		}
 	}
 
@@ -133,6 +222,9 @@ func toReminderWithStatus(r *models.Reminder) *models.ReminderWithStatus {
 
 func deriveReminderStatus(r *models.Reminder) models.ReminderStatus {
 	if r.CompletedAt != nil {
+		if r.TransactionID == nil {
+			return models.ReminderResolved
+		}
 		return models.ReminderCompleted
 	}
 	today := time.Now().UTC().Format("2006-01-02")

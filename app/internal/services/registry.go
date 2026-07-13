@@ -20,14 +20,15 @@ type Registry struct {
 func NewRegistry(repos *repositories.Registry, userID string) *Registry {
 	classifier := NewClassificationService(repos.Classifications)
 	transfer := NewTransferService(repos.Accounts, repos.Transactions, repos.Transfers)
+	reminder := NewReminderService(repos.Reminders)
 	return &Registry{
 		Account:        NewAccountService(repos.Accounts, repos.Transactions),
 		Budget:         NewBudgetService(repos.Budgets, repos.Accounts, repos.Transactions),
 		Envelope:       NewEnvelopeService(repos.Envelopes),
-		Reminder:       NewReminderService(repos.Reminders),
+		Reminder:       reminder,
 		Category:       NewCategoryService(repos.Categories, repos.CategoryRules, repos.TransactionCategories, repos.Transactions),
 		Classification: classifier,
-		Import:         NewImportService(repos.Accounts, repos.Transactions, classifier, repos.CategoryRules, repos.TransactionCategories, repos.RuleExceptions, transfer, userID),
+		Import:         NewImportService(repos.Accounts, repos.Transactions, classifier, repos.CategoryRules, repos.TransactionCategories, repos.RuleExceptions, transfer, reminder, userID),
 		Report:         NewReportService(repos.Transactions, repos.Categories),
 		RuleExceptions: repos.RuleExceptions,
 		Transaction:    NewTransactionService(repos.Transactions),

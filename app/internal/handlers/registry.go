@@ -25,7 +25,7 @@ func NewRegistry(svc *services.Registry) (*Registry, error) {
 		Account:       NewAccountHandler(svc.Account),
 		Budget:        NewBudgetHandler(svc.Budget, svc.Transfer),
 		Envelope:      NewEnvelopeHandler(svc.Envelope),
-		Reminder:      NewReminderHandler(svc.Reminder, svc.Transfer),
+		Reminder:      NewReminderHandler(svc.Reminder),
 		Category:      NewCategoryHandler(svc.Category),
 		Dump:          NewDumpHandler(),
 		Extract:       NewExtractHandler(svc.Import),

@@ -12,13 +12,14 @@ type ImportPreview struct {
 }
 
 type ImportSummary struct {
-	AccountName          string `json:"account_name"`
-	AccountNumber        string `json:"account_number"`
-	AccountIsNew         bool   `json:"account_is_new"`
-	Currency             string `json:"currency"`
-	Bank                 string `json:"bank"`
-	ImportedCount        int    `json:"imported_count"`
-	LinkedTransfersCount int    `json:"linked_transfers_count"`
+	AccountName          string          `json:"account_name"`
+	AccountNumber        string          `json:"account_number"`
+	AccountIsNew         bool            `json:"account_is_new"`
+	Currency             string          `json:"currency"`
+	Bank                 string          `json:"bank"`
+	ImportedCount        int             `json:"imported_count"`
+	LinkedTransfersCount int             `json:"linked_transfers_count"`
+	ReminderMatches      []ReminderMatch `json:"reminder_matches,omitempty"`
 }
 
 // TransactionOverride carries per-transaction corrections supplied by the user

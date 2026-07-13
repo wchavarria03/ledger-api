@@ -48,8 +48,7 @@ type EnvelopeHandler struct {
 }
 
 type ReminderHandler struct {
-	svc       ReminderManager
-	transfers TransferService
+	svc ReminderManager
 }
 
 type SalaryProfileHandler struct {

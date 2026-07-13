@@ -12,6 +12,9 @@ const (
 	ReminderOverdue   ReminderStatus = "overdue"
 	ReminderDueToday  ReminderStatus = "due_today"
 	ReminderUpcoming  ReminderStatus = "upcoming"
+	// ReminderResolved means the user marked the reminder paid, but it hasn't
+	// been linked to the real imported transaction yet.
+	ReminderResolved  ReminderStatus = "resolved"
 	ReminderCompleted ReminderStatus = "completed"
 )
 
@@ -35,14 +38,29 @@ type Reminder struct {
 	DueDate        string           `json:"due_date"` // YYYY-MM-DD
 	RecurrenceType *string          `json:"recurrence_type,omitempty"`
 	CompletedAt    *time.Time       `json:"completed_at,omitempty"`
-	Notes          *string          `json:"notes,omitempty"`
-	CreatedAt      time.Time        `json:"created_at,omitempty"`
+	// TransactionID links a resolved reminder to the real imported
+	// transaction that confirms it. Nil until confirmed.
+	TransactionID *string `json:"transaction_id,omitempty"`
+	// NextReminderID points at the next-occurrence row auto-created when this
+	// reminder was resolved, so its due_date can be adjusted after
+	// confirmation (e.g. recurrences based on actual pay date).
+	NextReminderID *string   `json:"next_reminder_id,omitempty"`
+	Notes          *string   `json:"notes,omitempty"`
+	CreatedAt      time.Time `json:"created_at,omitempty"`
 }
 
 // ReminderWithStatus is Reminder enriched with a derived status field.
 type ReminderWithStatus struct {
 	Reminder
 	Status ReminderStatus `json:"status"`
+}
+
+// ReminderMatch is a candidate pairing between a resolved-but-unconfirmed
+// reminder and a newly imported transaction, surfaced to the user for
+// confirmation after import.
+type ReminderMatch struct {
+	Reminder    ReminderWithStatus `json:"reminder"`
+	Transaction Transaction        `json:"transaction"`
 }
 
 // ReminderInput is the write shape for create and update.

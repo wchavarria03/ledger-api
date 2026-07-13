@@ -1,9 +1,7 @@
 package handlers
 
 import (
-	"fmt"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/shopspring/decimal"
@@ -11,8 +9,8 @@ import (
 	"ledger-api/app/internal/models"
 )
 
-func NewReminderHandler(svc ReminderManager, transfers TransferService) *ReminderHandler {
-	return &ReminderHandler{svc: svc, transfers: transfers}
+func NewReminderHandler(svc ReminderManager) *ReminderHandler {
+	return &ReminderHandler{svc: svc}
 }
 
 func (h *ReminderHandler) List(c *gin.Context) {
@@ -126,42 +124,34 @@ func (h *ReminderHandler) Delete(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// Complete handles POST /v1/reminders/:id/complete — marks a reminder as
+// paid. It never creates a transaction: the real transaction is expected to
+// arrive later via PDF import and gets linked through Link below.
 func (h *ReminderHandler) Complete(c *gin.Context) {
 	id := c.Param("id")
-	var req completeReminderRequest
+	reminder, err := h.svc.Complete(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+	if reminder == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "reminder not found"})
+		return
+	}
+	c.JSON(http.StatusOK, reminder)
+}
+
+// Link handles POST /v1/reminders/:id/link — confirms a resolved reminder by
+// attaching the real imported transaction that paid it.
+func (h *ReminderHandler) Link(c *gin.Context) {
+	id := c.Param("id")
+	var req linkReminderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	if req.CreateTransfer {
-		if req.FromAccountID == "" || req.ToAccountID == "" || req.Amount <= 0 || req.Currency == "" || req.Date == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "from_account_id, to_account_id, amount, currency, and date are required when create_transfer is true"})
-			return
-		}
-		date, err := time.Parse("2006-01-02", req.Date)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid date format, expected YYYY-MM-DD"})
-			return
-		}
-		desc := req.Description
-		if desc == "" {
-			desc = fmt.Sprintf("Payment reminder: %s", id)
-		}
-		if _, err := h.transfers.CreateTransfer(c.Request.Context(), models.TransferInput{
-			FromAccountID: req.FromAccountID,
-			ToAccountID:   req.ToAccountID,
-			Amount:        decimal.NewFromFloat(req.Amount),
-			Currency:      req.Currency,
-			Date:          date,
-			Description:   desc,
-		}); err != nil {
-			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
-			return
-		}
-	}
-
-	reminder, err := h.svc.Complete(c.Request.Context(), id)
+	reminder, err := h.svc.Link(c.Request.Context(), id, req.TransactionID, req.NextDueDate)
 	if err != nil {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
 		return

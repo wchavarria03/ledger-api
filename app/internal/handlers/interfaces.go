@@ -84,6 +84,7 @@ type ReminderManager interface {
 	Update(ctx context.Context, id string, fields map[string]any) (*models.ReminderWithStatus, error)
 	Delete(ctx context.Context, id string) error
 	Complete(ctx context.Context, id string) (*models.ReminderWithStatus, error)
+	Link(ctx context.Context, id, transactionID, nextDueDate string) (*models.ReminderWithStatus, error)
 }
 
 type SalaryProfileManager interface {

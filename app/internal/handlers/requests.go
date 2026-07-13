@@ -140,12 +140,7 @@ type purchaseCheckRequest struct {
 	Price float64 `json:"price" binding:"required,gt=0"`
 }
 
-type completeReminderRequest struct {
-	CreateTransfer bool    `json:"create_transfer"`
-	FromAccountID  string  `json:"from_account_id"`
-	ToAccountID    string  `json:"to_account_id"`
-	Amount         float64 `json:"amount"`
-	Currency       string  `json:"currency"`
-	Date           string  `json:"date"`        // YYYY-MM-DD
-	Description    string  `json:"description"` // optional transfer description
+type linkReminderRequest struct {
+	TransactionID string `json:"transaction_id" binding:"required"`
+	NextDueDate   string `json:"next_due_date"` // YYYY-MM-DD, optional override for the auto-created next occurrence
 }
