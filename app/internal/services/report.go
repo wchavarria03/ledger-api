@@ -9,6 +9,14 @@ import (
 	"ledger-api/app/internal/models"
 )
 
+// uncategorizedID/uncategorizedColor label the synthetic bucket used for
+// expenses with no category assigned, so they still surface in "by_category"
+// totals instead of silently disappearing from the chart.
+const (
+	uncategorizedID    = "uncategorized"
+	uncategorizedColor = "#6b7280"
+)
+
 func NewReportService(repo TransactionRepository, cats CategoryRepository) *ReportService {
 	return &ReportService{repo: repo, categories: cats}
 }
@@ -78,7 +86,18 @@ func (s *ReportService) Summarize(ctx context.Context, accountIDs []string, from
 			absAmount := math.Abs(amount) // expenses are stored as negatives; normalise to positive
 			summary.TotalExpenses += absAmount
 			dailyExpenses[day] += absAmount
-			for _, root := range resolveRootCategories(tx.Categories, catByID) {
+			roots := resolveRootCategories(tx.Categories, catByID)
+			if len(roots) == 0 {
+				if _, ok := categoryTotals[uncategorizedID]; !ok {
+					categoryTotals[uncategorizedID] = &models.CategorySpend{
+						CategoryID:   uncategorizedID,
+						CategoryName: "Uncategorized",
+						Color:        uncategorizedColor,
+					}
+				}
+				categoryTotals[uncategorizedID].Total += absAmount
+			}
+			for _, root := range roots {
 				if _, ok := categoryTotals[root.ID]; !ok {
 					categoryTotals[root.ID] = &models.CategorySpend{
 						CategoryID:   root.ID,
