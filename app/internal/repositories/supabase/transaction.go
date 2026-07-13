@@ -200,6 +200,35 @@ func txBaseParams(accountID string, filter models.TxFilter) url.Values {
 	return params
 }
 
+// txSortColumns whitelists the columns clients may sort by, to avoid
+// building a PostgREST order clause from unvalidated query-string input.
+// "category" is deliberately excluded — categories are a many-to-many join,
+// not a scalar column on transactions.
+var txSortColumns = map[string]bool{
+	"date":        true,
+	"description": true,
+	"type":        true,
+	"amount":      true,
+	"balance":     true,
+}
+
+// txSortOrder builds the PostgREST `order` value for ListFiltered. Sorting by
+// date always keeps import_seq as a secondary key, since date alone can't
+// order same-day rows (see migration 015); other columns sort on their own.
+func txSortOrder(sortBy, sortDir string) string {
+	if !txSortColumns[sortBy] {
+		sortBy = "date"
+	}
+	dir := "desc"
+	if sortDir == "asc" {
+		dir = "asc"
+	}
+	if sortBy == "date" {
+		return fmt.Sprintf("date.%s,import_seq.%s", dir, dir)
+	}
+	return fmt.Sprintf("%s.%s", sortBy, dir)
+}
+
 func (r *TransactionRepository) ListFiltered(ctx context.Context, accountID string, filter models.TxFilter) ([]*models.Transaction, int, error) {
 	base := txBaseParams(accountID, filter)
 
@@ -234,7 +263,7 @@ func (r *TransactionRepository) ListFiltered(ctx context.Context, accountID stri
 		dataParams[k] = v
 	}
 	dataParams.Set("select", "*,transaction_categories(categories(id,name,color,parent_id)),transfers!transfer_id(from_tx_id,to_tx_id)")
-	dataParams.Set("order", "date.desc,import_seq.desc")
+	dataParams.Set("order", txSortOrder(filter.SortBy, filter.SortDir))
 	dataParams.Set("limit", strconv.Itoa(limit))
 	dataParams.Set("offset", strconv.Itoa(offset))
 

@@ -61,12 +61,14 @@ func (h *TransactionHandler) ListByAccount(c *gin.Context) {
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "50"))
 
 	filter := models.TxFilter{
-		Search: c.Query("search"),
-		Type:   c.Query("type"),
-		From:   c.Query("from"),
-		To:     c.Query("to"),
-		Page:   page,
-		Limit:  limit,
+		Search:  c.Query("search"),
+		Type:    c.Query("type"),
+		From:    c.Query("from"),
+		To:      c.Query("to"),
+		Page:    page,
+		Limit:   limit,
+		SortBy:  c.Query("sort_by"),
+		SortDir: c.Query("sort_dir"),
 	}
 
 	txs, total, err := h.svc.ListFiltered(c.Request.Context(), accountID, filter)
