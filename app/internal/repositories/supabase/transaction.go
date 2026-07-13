@@ -27,6 +27,7 @@ type transactionRow struct {
 	Balance     decimal.Decimal `json:"balance"`
 	Currency    string          `json:"currency"`
 	SourceFile  string          `json:"source_file,omitempty"`
+	ImportSeq   *int            `json:"import_seq,omitempty"`
 }
 
 // transactionRowFull is the read shape — includes embedded category and transfer joins.
@@ -140,7 +141,7 @@ func (r *TransactionRepository) GetByAccountID(ctx context.Context, accountID st
 	rows, err := databases.Get[[]*transactionRowFull](ctx, r.client, "/rest/v1/transactions", url.Values{
 		"account_id": []string{"eq." + accountID},
 		"select":     []string{"*,transaction_categories(categories(id,name,color,parent_id))"},
-		"order":      []string{"date.desc"},
+		"order":      []string{"date.desc,import_seq.desc"},
 	})
 	if err != nil {
 		return nil, err
@@ -233,7 +234,7 @@ func (r *TransactionRepository) ListFiltered(ctx context.Context, accountID stri
 		dataParams[k] = v
 	}
 	dataParams.Set("select", "*,transaction_categories(categories(id,name,color,parent_id)),transfers!transfer_id(from_tx_id,to_tx_id)")
-	dataParams.Set("order", "date.desc")
+	dataParams.Set("order", "date.desc,import_seq.desc")
 	dataParams.Set("limit", strconv.Itoa(limit))
 	dataParams.Set("offset", strconv.Itoa(offset))
 
@@ -349,7 +350,7 @@ func (r *TransactionRepository) GetByAccountIDsInRange(ctx context.Context, acco
 		"account_id": []string{"in.(" + strings.Join(accountIDs, ",") + ")"},
 		"date":       []string{"gte." + from.Format("2006-01-02"), "lte." + to.Format("2006-01-02")},
 		"select":     []string{"*,transaction_categories(categories(id,name,color,parent_id))"},
-		"order":      []string{"date.asc"},
+		"order":      []string{"date.asc,import_seq.asc"},
 	})
 	if err != nil {
 		return nil, err
@@ -389,7 +390,7 @@ func (r *TransactionRepository) GetCurrentBalances(ctx context.Context, accountI
 		rows, err := databases.Get[[]*transactionRowFull](ctx, r.client, "/rest/v1/transactions", url.Values{
 			"account_id": []string{"eq." + id},
 			"select":     []string{"account_id,balance"},
-			"order":      []string{"date.desc"},
+			"order":      []string{"date.desc,import_seq.desc"},
 			"limit":      []string{"1"},
 		})
 		if err != nil {
@@ -412,7 +413,7 @@ func (r *TransactionRepository) GetLastBalancePerAccount(ctx context.Context, ac
 			"account_id": []string{"eq." + id},
 			"date":       []string{"lt." + before.Format("2006-01-02")},
 			"select":     []string{"account_id,balance"},
-			"order":      []string{"date.desc"},
+			"order":      []string{"date.desc,import_seq.desc"},
 			"limit":      []string{"1"},
 		})
 		if err != nil {
@@ -448,7 +449,7 @@ func (r *TransactionRepository) FindMatchingPattern(ctx context.Context, pattern
 	params := url.Values{
 		"description": []string{"ilike.*" + pattern + "*"},
 		"select":      []string{"id,account_id,date,reference,code,type,description,amount,balance,currency"},
-		"order":       []string{"date.desc"},
+		"order":       []string{"date.desc,import_seq.desc"},
 		"limit":       []string{"200"},
 	}
 	if accountID != "" {
@@ -491,6 +492,7 @@ func (r *TransactionRepository) UpsertBatch(ctx context.Context, accountID strin
 			Balance:     tx.Balance,
 			Currency:    tx.Currency,
 			SourceFile:  sourceFile,
+			ImportSeq:   tx.ImportSeq,
 		}
 	}
 	_, err := databases.Post[struct{}](ctx, r.client,

@@ -25,9 +25,13 @@ type Transaction struct {
 	Amount      decimal.Decimal `json:"amount"`
 	Balance     decimal.Decimal `json:"balance"`
 	Currency    string          `json:"currency"`
-	TransferID             string          `json:"transfer_id,omitempty"`
-	CounterpartAccountName string          `json:"counterpart_account_name,omitempty"`
-	Categories             []*Category     `json:"categories,omitempty"`
+	// ImportSeq preserves the row's position within its source statement
+	// import, used as a tie-breaker when sorting same-date transactions
+	// (the bare `date` column has no time component to order by).
+	ImportSeq              *int        `json:"import_seq,omitempty"`
+	TransferID             string      `json:"transfer_id,omitempty"`
+	CounterpartAccountName string      `json:"counterpart_account_name,omitempty"`
+	Categories             []*Category `json:"categories,omitempty"`
 }
 
 type Statement struct {

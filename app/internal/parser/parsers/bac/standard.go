@@ -124,6 +124,8 @@ func (p *standardParser) Parse(text string) (*models.Statement, error) {
 		return nil, fmt.Errorf("bac/standard: no transactions found — verify the PDF matches this format")
 	}
 
+	stampImportSeq(transactions)
+
 	return &models.Statement{
 		AccountNumber: accountNumber,
 		ShortNumber:   bacShortNumber(accountNumber),
@@ -143,6 +145,17 @@ func bacShortNumber(iban string) string {
 		return ""
 	}
 	return digits[bacShortStart:bacShortEnd]
+}
+
+// stampImportSeq records each transaction's position within the parsed
+// statement, giving same-date rows a stable secondary sort key — the bare
+// `date` column has no time component, so without this, ties would be
+// returned in whatever order the database happens to produce.
+func stampImportSeq(transactions []models.Transaction) {
+	for i := range transactions {
+		seq := i
+		transactions[i].ImportSeq = &seq
+	}
 }
 
 // parseFields converts the 7 raw text fields into a Transaction.

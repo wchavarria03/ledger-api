@@ -166,6 +166,8 @@ func (p *savingsParser) Parse(text string) (*models.Statement, error) {
 		}
 	}
 
+	stampImportSeq(transactions)
+
 	return &models.Statement{
 		AccountNumber: accountNumber,
 		ShortNumber:   bacShortNumber(accountNumber),
