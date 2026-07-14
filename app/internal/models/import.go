@@ -11,15 +11,23 @@ type ImportPreview struct {
 	ExistingCount    int           `json:"existing_count"`
 }
 
+// ImportedAccountSummary describes one account a statement imported into.
+// A statement almost always resolves to a single account, but a mixed-
+// currency statement (e.g. a BAC credit card billing both CRC and USD on one
+// physical card) resolves to one account per currency.
+type ImportedAccountSummary struct {
+	AccountName   string `json:"account_name"`
+	AccountNumber string `json:"account_number"`
+	AccountIsNew  bool   `json:"account_is_new"`
+	Currency      string `json:"currency"`
+	Bank          string `json:"bank"`
+	ImportedCount int    `json:"imported_count"`
+}
+
 type ImportSummary struct {
-	AccountName          string          `json:"account_name"`
-	AccountNumber        string          `json:"account_number"`
-	AccountIsNew         bool            `json:"account_is_new"`
-	Currency             string          `json:"currency"`
-	Bank                 string          `json:"bank"`
-	ImportedCount        int             `json:"imported_count"`
-	LinkedTransfersCount int             `json:"linked_transfers_count"`
-	ReminderMatches      []ReminderMatch `json:"reminder_matches,omitempty"`
+	Accounts             []ImportedAccountSummary `json:"accounts"`
+	LinkedTransfersCount int                      `json:"linked_transfers_count"`
+	ReminderMatches      []ReminderMatch          `json:"reminder_matches,omitempty"`
 }
 
 // TransactionOverride carries per-transaction corrections supplied by the user

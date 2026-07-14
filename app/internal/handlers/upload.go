@@ -57,6 +57,16 @@ func (h *UploadHandler) Import(c *gin.Context) {
 		return
 	}
 
+	// This format's PDF content stream places table cells with no whitespace
+	// glyph between them (e.g. two adjacent amount columns come out as
+	// "11233.000.00"), which the default extraction can't unambiguously
+	// re-split. Re-extract with cell boundaries preserved for this parser only.
+	if p.Name() == "bac/creditcard" {
+		if cellText, err := pdf.ExtractCellsFromBytes(data); err == nil {
+			text = cellText
+		}
+	}
+
 	stmt, err := p.Parse(text)
 	if err != nil {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "failed to parse statement: " + err.Error()})

@@ -56,6 +56,25 @@ func ExtractTextFromBytes(data []byte) (string, error) {
 	return sb.String(), nil
 }
 
+// ExtractCellsFromBytes is like ExtractTextFromBytes but preserves table
+// cell boundaries with a space — see Reader.ExtractCellsFromPage.
+func ExtractCellsFromBytes(data []byte) (string, error) {
+	reader, err := NewReaderFromBytes(data)
+	if err != nil {
+		return "", fmt.Errorf("failed to create PDF reader: %w", err)
+	}
+
+	var sb strings.Builder
+	for i := 1; i <= reader.GetNumPages(); i++ {
+		text, err := reader.ExtractCellsFromPage(i)
+		if err != nil {
+			return "", fmt.Errorf("failed to extract cells from page %d: %w", i, err)
+		}
+		sb.WriteString(text)
+	}
+	return sb.String(), nil
+}
+
 func ExtractText(inputPath, outputPath string, verbose bool) error {
 	reader, err := NewReader(inputPath)
 	if err != nil {

@@ -34,12 +34,12 @@ func NewImportService(
 }
 
 func (s *ImportService) Import(ctx context.Context, stmt *models.Statement, bankName string) error {
-	_, _, _, _, err := s.doImport(ctx, stmt, bankName, nil)
+	_, _, _, err := s.doImport(ctx, stmt, bankName, nil)
 	return err
 }
 
 func (s *ImportService) ImportWithSummary(ctx context.Context, stmt *models.Statement, bankName string, catOverrides map[int][]string) (*models.ImportSummary, error) {
-	acc, linked, isNew, reminderMatches, err := s.doImport(ctx, stmt, bankName, catOverrides)
+	results, linked, reminderMatches, err := s.doImport(ctx, stmt, bankName, catOverrides)
 	if err != nil {
 		return nil, err
 	}
@@ -47,43 +47,102 @@ func (s *ImportService) ImportWithSummary(ctx context.Context, stmt *models.Stat
 	if idx := strings.Index(bankName, "/"); idx != -1 {
 		bank = bankName[:idx]
 	}
+
+	accounts := make([]models.ImportedAccountSummary, len(results))
+	for i, r := range results {
+		accounts[i] = models.ImportedAccountSummary{
+			AccountName:   r.account.Name,
+			AccountNumber: r.account.AccountNumber,
+			AccountIsNew:  r.isNew,
+			Currency:      r.account.Currency,
+			Bank:          bank,
+			ImportedCount: r.count,
+		}
+	}
+
 	return &models.ImportSummary{
-		AccountName:          acc.Name,
-		AccountNumber:        stmt.AccountNumber,
-		AccountIsNew:         isNew,
-		Currency:             acc.Currency,
-		Bank:                 bank,
-		ImportedCount:        len(stmt.Transactions),
+		Accounts:             accounts,
 		LinkedTransfersCount: linked,
 		ReminderMatches:      reminderMatches,
 	}, nil
 }
 
+// CheckOverlap reports how many transactions already exist in the accounts
+// this statement would import into, across all currencies it carries.
 func (s *ImportService) CheckOverlap(ctx context.Context, stmt *models.Statement) (int, error) {
 	if len(stmt.Transactions) == 0 {
 		return 0, nil
 	}
 
-	acc, err := s.accounts.FindByAccountNumber(ctx, stmt.AccountNumber)
-	if err != nil {
-		return 0, fmt.Errorf("lookup account: %w", err)
-	}
-	if acc == nil {
-		return 0, nil
+	total := 0
+	for _, g := range groupByCurrency(stmt) {
+		acc, err := s.accounts.FindByAccountNumber(ctx, g.accountNumber)
+		if err != nil {
+			return 0, fmt.Errorf("lookup account: %w", err)
+		}
+		if acc == nil {
+			continue
+		}
+
+		from := g.transactions[0].Date
+		to := g.transactions[len(g.transactions)-1].Date
+		existing, err := s.transactions.GetByAccountIDsInRange(ctx, []string{acc.ID}, from, to)
+		if err != nil {
+			return 0, fmt.Errorf("check existing: %w", err)
+		}
+		total += len(existing)
 	}
 
-	from := stmt.Transactions[0].Date
-	to := stmt.Transactions[len(stmt.Transactions)-1].Date
-
-	existing, err := s.transactions.GetByAccountIDsInRange(ctx, []string{acc.ID}, from, to)
-	if err != nil {
-		return 0, fmt.Errorf("check existing: %w", err)
-	}
-
-	return len(existing), nil
+	return total, nil
 }
 
-func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, bankName string, catOverrides map[int][]string) (*models.Account, int, bool, []models.ReminderMatch, error) {
+// importedAccount is one currency-group's outcome from doImport.
+type importedAccount struct {
+	account *models.Account
+	isNew   bool
+	count   int
+}
+
+// currencyGroup is a statement's transactions split by currency, plus the
+// account_number that currency resolves to. Almost always a single group
+// (accountNumber == stmt.AccountNumber); mixed-currency statements (e.g. BAC
+// credit cards billing CRC and USD on one physical card) produce one group
+// per currency, since an Account always holds a single currency.
+type currencyGroup struct {
+	currency      string
+	accountNumber string
+	transactions  []models.Transaction
+	origIndexes   []int
+}
+
+func groupByCurrency(stmt *models.Statement) []currencyGroup {
+	order := make([]string, 0, 2)
+	byCurrency := make(map[string]*currencyGroup, 2)
+	for i, tx := range stmt.Transactions {
+		g, ok := byCurrency[tx.Currency]
+		if !ok {
+			g = &currencyGroup{currency: tx.Currency}
+			byCurrency[tx.Currency] = g
+			order = append(order, tx.Currency)
+		}
+		g.transactions = append(g.transactions, tx)
+		g.origIndexes = append(g.origIndexes, i)
+	}
+
+	multi := len(order) > 1
+	groups := make([]currencyGroup, len(order))
+	for i, currency := range order {
+		g := byCurrency[currency]
+		g.accountNumber = stmt.AccountNumber
+		if multi {
+			g.accountNumber = stmt.AccountNumber + ":" + currency
+		}
+		groups[i] = *g
+	}
+	return groups
+}
+
+func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, bankName string, catOverrides map[int][]string) ([]importedAccount, int, []models.ReminderMatch, error) {
 	bank := bankName
 	if idx := strings.Index(bankName, "/"); idx != -1 {
 		bank = bankName[:idx]
@@ -95,65 +154,84 @@ func (s *ImportService) doImport(ctx context.Context, stmt *models.Statement, ba
 		userID = s.userID
 	}
 
-	acc, err := s.accounts.FindByAccountNumber(ctx, stmt.AccountNumber)
-	if err != nil {
-		return nil, 0, false, nil, fmt.Errorf("lookup account: %w", err)
-	}
+	groups := groupByCurrency(stmt)
+	multi := len(groups) > 1
 
-	isNew := acc == nil
-	if isNew {
-		currency := "CRC"
-		if len(stmt.Transactions) > 0 {
-			currency = stmt.Transactions[0].Currency
-		}
+	var results []importedAccount
+	var reminderMatches []models.ReminderMatch
 
-		name := strings.ToUpper(bank)
-		if len(stmt.AccountNumber) >= 4 {
-			name = strings.ToUpper(bank) + " - ****" + stmt.AccountNumber[len(stmt.AccountNumber)-4:]
-		}
-
-		acc, err = s.accounts.Upsert(ctx, &models.Account{
-			AccountNumber: stmt.AccountNumber,
-			ShortNumber:   stmt.ShortNumber,
-			BankName:      bank,
-			Name:          name,
-			Currency:      currency,
-			UserID:        userID,
-		})
+	for _, g := range groups {
+		acc, err := s.accounts.FindByAccountNumber(ctx, g.accountNumber)
 		if err != nil {
-			return nil, 0, false, nil, fmt.Errorf("upsert account: %w", err)
+			return nil, 0, nil, fmt.Errorf("lookup account: %w", err)
 		}
-	}
 
-	txs, err := s.classifier.Apply(ctx, bank, stmt.Transactions)
-	if err != nil {
-		return nil, 0, false, nil, fmt.Errorf("classify transactions: %w", err)
-	}
+		isNew := acc == nil
+		if isNew {
+			name := strings.ToUpper(bank)
+			if len(stmt.AccountNumber) >= 4 {
+				name = strings.ToUpper(bank) + " - ****" + stmt.AccountNumber[len(stmt.AccountNumber)-4:]
+			}
+			if multi {
+				name += " (" + g.currency + ")"
+			}
 
-	if err := s.transactions.UpsertBatch(ctx, acc.ID, stmt.SourceFile, txs); err != nil {
-		return nil, 0, false, nil, fmt.Errorf("upsert transactions: %w", err)
-	}
+			acc, err = s.accounts.Upsert(ctx, &models.Account{
+				AccountNumber: g.accountNumber,
+				ShortNumber:   stmt.ShortNumber,
+				BankName:      bank,
+				Name:          name,
+				Currency:      g.currency,
+				UserID:        userID,
+			})
+			if err != nil {
+				return nil, 0, nil, fmt.Errorf("upsert account: %w", err)
+			}
+		}
 
-	// Apply user-supplied category overrides before auto-categorization so
-	// autoCategorize skips these transactions (it checks len(Categories) > 0).
-	if len(catOverrides) > 0 {
-		s.applyCategoryOverrides(ctx, acc.ID, stmt.Transactions, catOverrides)
-	}
+		txs, err := s.classifier.Apply(ctx, bank, g.transactions)
+		if err != nil {
+			return nil, 0, nil, fmt.Errorf("classify transactions: %w", err)
+		}
 
-	// Auto-categorize newly imported transactions using category rules.
-	// Errors here are non-fatal — the import already succeeded.
-	s.autoCategorize(ctx, acc.ID, stmt)
+		if err := s.transactions.UpsertBatch(ctx, acc.ID, stmt.SourceFile, txs); err != nil {
+			return nil, 0, nil, fmt.Errorf("upsert transactions: %w", err)
+		}
+
+		// Apply user-supplied category overrides before auto-categorization so
+		// autoCategorize skips these transactions (it checks len(Categories) > 0).
+		// catOverrides is keyed by index into the original (pre-split)
+		// stmt.Transactions, so translate via each row's origIndexes.
+		if len(catOverrides) > 0 {
+			var groupOverrides []categoryOverride
+			for gi, origIdx := range g.origIndexes {
+				if catIDs, ok := catOverrides[origIdx]; ok {
+					groupOverrides = append(groupOverrides, categoryOverride{tx: g.transactions[gi], categoryIDs: catIDs})
+				}
+			}
+			if len(groupOverrides) > 0 {
+				s.applyCategoryOverrides(ctx, acc.ID, groupOverrides)
+			}
+		}
+
+		// Auto-categorize newly imported transactions using category rules.
+		// Errors here are non-fatal — the import already succeeded.
+		s.autoCategorize(ctx, acc.ID, &models.Statement{Transactions: g.transactions})
+
+		// Surface candidate matches between resolved-but-unconfirmed reminders
+		// and the newly imported transactions, for the user to confirm.
+		// Best-effort — same pattern as autoCategorize.
+		reminderMatches = append(reminderMatches, s.matchReminders(ctx, acc.ID, &models.Statement{Transactions: g.transactions})...)
+
+		results = append(results, importedAccount{account: acc, isNew: isNew, count: len(g.transactions)})
+	}
 
 	// Auto-reconcile transfer pairs across all accounts for this period.
 	// Errors here are non-fatal — same best-effort pattern as autoCategorize.
+	// Runs once for the whole statement — it scans across all accounts anyway.
 	linked := s.autoReconcile(ctx, stmt)
 
-	// Surface candidate matches between resolved-but-unconfirmed reminders and
-	// the newly imported transactions, for the user to confirm. Best-effort —
-	// same pattern as autoCategorize/autoReconcile.
-	reminderMatches := s.matchReminders(ctx, acc.ID, stmt)
-
-	return acc, linked, isNew, reminderMatches, nil
+	return results, linked, reminderMatches, nil
 }
 
 // matchReminders looks up transactions imported in this statement's date
@@ -235,15 +313,29 @@ func (s *ImportService) autoCategorize(ctx context.Context, accountID string, st
 	}
 }
 
+// categoryOverride pairs a parsed transaction (as it appeared in the source
+// statement) with the category IDs the user assigned it during import review.
+type categoryOverride struct {
+	tx          models.Transaction
+	categoryIDs []string
+}
+
 // applyCategoryOverrides sets explicit categories for transactions the user
 // corrected during the import review. Matches stored transactions by
 // (date, reference, amount) — the same unique key used by UpsertBatch.
-func (s *ImportService) applyCategoryOverrides(ctx context.Context, accountID string, txs []models.Transaction, overrides map[int][]string) {
-	if s.txCategories == nil || len(txs) == 0 {
+func (s *ImportService) applyCategoryOverrides(ctx context.Context, accountID string, overrides []categoryOverride) {
+	if s.txCategories == nil || len(overrides) == 0 {
 		return
 	}
-	from := txs[0].Date
-	to := txs[len(txs)-1].Date
+	from, to := overrides[0].tx.Date, overrides[0].tx.Date
+	for _, o := range overrides {
+		if o.tx.Date.Before(from) {
+			from = o.tx.Date
+		}
+		if o.tx.Date.After(to) {
+			to = o.tx.Date
+		}
+	}
 	stored, err := s.transactions.GetByAccountIDsInRange(ctx, []string{accountID}, from, to)
 	if err != nil {
 		return
@@ -255,14 +347,10 @@ func (s *ImportService) applyCategoryOverrides(ctx context.Context, accountID st
 		byKey[key{tx.Date.Format("2006-01-02"), tx.Reference, tx.Amount.String()}] = tx.ID
 	}
 
-	for idx, catIDs := range overrides {
-		if idx < 0 || idx >= len(txs) {
-			continue
-		}
-		tx := txs[idx]
-		k := key{tx.Date.Format("2006-01-02"), tx.Reference, tx.Amount.String()}
+	for _, o := range overrides {
+		k := key{o.tx.Date.Format("2006-01-02"), o.tx.Reference, o.tx.Amount.String()}
 		if id, ok := byKey[k]; ok && id != "" {
-			_ = s.txCategories.SetCategories(ctx, id, catIDs)
+			_ = s.txCategories.SetCategories(ctx, id, o.categoryIDs)
 		}
 	}
 }

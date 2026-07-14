@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/ledongthuc/pdf"
 )
@@ -73,6 +74,43 @@ func (r *Reader) ExtractTextFromPage(pageNum int) (string, error) {
 	}
 
 	return text, nil
+}
+
+// ExtractCellsFromPage returns the page's text with a single space inserted
+// between every table cell. Some statements' content streams place each
+// table cell's text at explicit coordinates with no whitespace glyph between
+// adjacent cells — ExtractTextFromPage concatenates those cells with nothing
+// at all (e.g. "11233.000.00" for two amount columns), which is ambiguous to
+// re-split. This walks the page's text grouped by row/column position
+// instead of raw stream order, so cell boundaries are preserved.
+func (r *Reader) ExtractCellsFromPage(pageNum int) (string, error) {
+	if pageNum < 1 || pageNum > r.reader.NumPage() {
+		return "", fmt.Errorf("invalid page number: %d", pageNum)
+	}
+
+	page := r.reader.Page(pageNum)
+	if page.V.IsNull() {
+		return "", fmt.Errorf("page %d is null", pageNum)
+	}
+
+	rows, err := page.GetTextByRow()
+	if err != nil {
+		return "", fmt.Errorf("failed to extract cell text from page %d: %w", pageNum, err)
+	}
+
+	var sb strings.Builder
+	for _, row := range rows {
+		for _, t := range row.Content {
+			s := strings.TrimSpace(t.S)
+			if s == "" {
+				continue
+			}
+			sb.WriteString(s)
+			sb.WriteString(" ")
+		}
+		sb.WriteString("\n")
+	}
+	return sb.String(), nil
 }
 
 func (r *Reader) Close() error {
