@@ -32,6 +32,9 @@ type Transaction struct {
 	TransferID             string      `json:"transfer_id,omitempty"`
 	CounterpartAccountName string      `json:"counterpart_account_name,omitempty"`
 	Categories             []*Category `json:"categories,omitempty"`
+	// Note is a free-text annotation the user can attach when the imported
+	// description isn't enough to identify what a purchase actually was.
+	Note *string `json:"note,omitempty"`
 }
 
 type Statement struct {

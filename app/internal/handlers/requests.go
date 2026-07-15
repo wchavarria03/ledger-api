@@ -70,6 +70,10 @@ type updateTransactionTypeRequest struct {
 	Type string `json:"type" binding:"required,oneof=expense income transfer"`
 }
 
+type updateTransactionNoteRequest struct {
+	Note string `json:"note"`
+}
+
 type createBudgetRequest struct {
 	CategoryID string  `json:"category_id" binding:"required"`
 	Currency   string  `json:"currency" binding:"required"`

@@ -24,6 +24,7 @@ type AccountLister interface {
 type TransactionLister interface {
 	ListFiltered(ctx context.Context, accountID string, filter models.TxFilter) ([]*models.Transaction, int, error)
 	Create(ctx context.Context, tx *models.Transaction) (*models.Transaction, error)
+	UpdateNote(ctx context.Context, id, note string) (*models.Transaction, error)
 }
 
 type StatementImporter interface {

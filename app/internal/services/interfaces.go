@@ -32,6 +32,7 @@ type TransactionRepository interface {
 	SetTransferID(ctx context.Context, txID, transferID string) error
 	ClearTransferID(ctx context.Context, txID string) error
 	UpdateType(ctx context.Context, txID string, txType models.TransactionType) error
+	UpdateNote(ctx context.Context, txID string, note string) error
 }
 
 // TransferRepository persists the link row connecting two transactions

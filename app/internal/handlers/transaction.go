@@ -54,6 +54,27 @@ func (h *TransactionHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, tx)
 }
 
+// UpdateNote handles PATCH /v1/transactions/:id/note — sets or clears a
+// transaction's free-text note.
+func (h *TransactionHandler) UpdateNote(c *gin.Context) {
+	var req updateTransactionNoteRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	tx, err := h.svc.UpdateNote(c.Request.Context(), c.Param("id"), req.Note)
+	if err != nil {
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+		return
+	}
+	if tx == nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "transaction not found"})
+		return
+	}
+	c.JSON(http.StatusOK, tx)
+}
+
 func (h *TransactionHandler) ListByAccount(c *gin.Context) {
 	accountID := c.Param("id")
 

@@ -25,3 +25,10 @@ func (s *TransactionService) ListFiltered(ctx context.Context, accountID string,
 func (s *TransactionService) Create(ctx context.Context, tx *models.Transaction) (*models.Transaction, error) {
 	return s.repo.Create(ctx, tx)
 }
+
+func (s *TransactionService) UpdateNote(ctx context.Context, id, note string) (*models.Transaction, error) {
+	if err := s.repo.UpdateNote(ctx, id, note); err != nil {
+		return nil, err
+	}
+	return s.repo.GetByID(ctx, id)
+}

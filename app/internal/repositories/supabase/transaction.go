@@ -45,6 +45,7 @@ type transactionRowFull struct {
 	TransferID            string            `json:"transfer_id,omitempty"`
 	Transfer              *transferEmbed    `json:"transfers,omitempty"`
 	TransactionCategories []txCategoryEmbed `json:"transaction_categories"`
+	Note                  *string           `json:"note,omitempty"`
 }
 
 type txCategoryEmbed struct {
@@ -134,6 +135,7 @@ func (r *TransactionRepository) GetByID(ctx context.Context, id string) (*models
 		Currency:    row.Currency,
 		TransferID:  row.TransferID,
 		Categories:  cats,
+		Note:        row.Note,
 	}, nil
 }
 
@@ -168,6 +170,7 @@ func (r *TransactionRepository) GetByAccountID(ctx context.Context, accountID st
 			Currency:    row.Currency,
 			TransferID:  row.TransferID,
 			Categories:  cats,
+			Note:        row.Note,
 		}
 	}
 	return txs, nil
@@ -301,6 +304,7 @@ func (r *TransactionRepository) ListFiltered(ctx context.Context, accountID stri
 			TransferID:             row.TransferID,
 			CounterpartAccountName: counterpartNames[row.ID],
 			Categories:             cats,
+			Note:                   row.Note,
 		}
 	}
 	return txs, total, nil
@@ -488,6 +492,19 @@ func (r *TransactionRepository) UpdateType(ctx context.Context, txID string, txT
 	_, err := databases.Patch[struct{}](ctx, r.client,
 		"/rest/v1/transactions?id=eq."+txID,
 		map[string]any{"type": string(txType)},
+		"return=minimal")
+	return err
+}
+
+// UpdateNote sets or clears a transaction's free-text note.
+func (r *TransactionRepository) UpdateNote(ctx context.Context, txID string, note string) error {
+	var value any = note
+	if note == "" {
+		value = nil
+	}
+	_, err := databases.Patch[struct{}](ctx, r.client,
+		"/rest/v1/transactions?id=eq."+txID,
+		map[string]any{"note": value},
 		"return=minimal")
 	return err
 }
